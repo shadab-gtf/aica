@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { ErrorCode, err, errors, isErr, isOk, newId, ok } from '@aica/shared';
+import { ErrorCode, err, errors, isErr, isOk, newId, ok, type Result } from '@aica/shared';
 import { ApprovalGate, ApprovalMode, Redactor, type PolicyContext } from '@aica/security-engine';
 
 import { ToolRegistry } from './registry.js';
@@ -308,7 +308,7 @@ describe('dispatch: failure containment', () => {
       ...readTool,
       timeoutMs: 100,
       handler: async (_input, ctx) =>
-        new Promise((resolve) => {
+        new Promise<Result<{ aborted: boolean }>>((resolve) => {
           ctx.signal.addEventListener('abort', () => resolve(ok({ aborted: true })), {
             once: true,
           });

@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
     "composite": false,
@@ -8,8 +8,9 @@
     "incremental": false,
     "baseUrl": ".",
     "paths": {
-      "@aica/*": ["../*/src/index.ts"]
-    }
+      "@aica/*": ["packages/*/src/index.ts"]
+    },
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"]
 }

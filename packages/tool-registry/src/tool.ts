@@ -80,6 +80,51 @@ export function defineTool<Schema extends z.ZodTypeAny, Output>(
   return definition;
 }
 
+/**
+ * A tool with its schema and output types erased.
+ *
+ * `ToolDefinition<Schema>` is invariant in `Schema`, because the schema appears
+ * both as a property and inside the handler's parameter type. A concrete
+ * `ToolDefinition<ZodObject<...>>` is therefore *not* assignable to
+ * `ToolDefinition<ZodTypeAny>`, which is exactly what a heterogeneous registry
+ * needs to store.
+ *
+ * This type is the erased form used for storage and dispatch. Erasure happens
+ * once, in `ToolRegistry.register`, rather than by casting at every call site.
+ * It is sound because the dispatcher validates input against `inputSchema`
+ * before invoking `handler`, so the handler always receives the shape its
+ * original signature declared.
+ */
+export interface AnyToolDefinition {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly category: ToolCategory;
+  readonly inputSchema: z.ZodTypeAny;
+  readonly risk: RiskLevel;
+  readonly actionKind: ActionKind;
+  readonly mutates: boolean;
+  readonly alwaysConfirm?: boolean;
+  readonly timeoutMs?: number;
+  readonly describeCall?: (input: unknown) => string;
+  readonly handler: (
+    input: unknown,
+    context: ToolContext,
+  ) => Promise<Result<unknown>> | Result<unknown>;
+}
+
+/**
+ * Erase a tool's schema and output types for storage.
+ *
+ * The single place this cast is performed, with the soundness argument recorded
+ * on `AnyToolDefinition`.
+ */
+export function eraseTool<Schema extends z.ZodTypeAny, Output>(
+  definition: ToolDefinition<Schema, Output>,
+): AnyToolDefinition {
+  return definition as unknown as AnyToolDefinition;
+}
+
 /** The shape a provider needs in order to advertise a tool to the model. */
 export interface ToolSpec {
   readonly name: string;
@@ -91,8 +136,17 @@ export interface ToolSpec {
  * Derive the JSON Schema shown to the model from the same Zod schema that
  * validates execution. This is the single point that prevents the advertised
  * contract from drifting from the enforced one.
+ *
+ * The parameter is structural rather than `ToolDefinition`, so both a concrete
+ * tool and an erased one are accepted: `inputSchema` appears only in a
+ * covariant property position here, which sidesteps the invariance described
+ * on `AnyToolDefinition`.
  */
-export function toToolSpec(definition: ToolDefinition): ToolSpec {
+export function toToolSpec(definition: {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: z.ZodTypeAny;
+}): ToolSpec {
   const parameters = zodToJsonSchema(definition.inputSchema, {
     target: 'jsonSchema7',
     $refStrategy: 'none',

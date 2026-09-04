@@ -1,15 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"],
-  "references": [
-    {
-      "path": "../shared"
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "baseUrl": ".",
+    "paths": {
+      "@aica/*": ["../*/src/index.ts"]
     }
-  ]
+  },
+  "include": ["src/**/*.ts"]
 }

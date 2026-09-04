@@ -18,19 +18,19 @@ is reported.
 
 ## Status
 
-| Phase | Scope | State |
-| ----- | ----- | ----- |
-| 0 | Monorepo scaffold, architecture document | Complete |
-| 1 | Agent runtime, provider abstraction, tool registry, security/exec/fs/git engines | Complete |
-| 2 | API IR, spec parsers, endpoint index, auth model | Not started |
-| 3 | AST indexing, symbols, references, dependency graph | Not started |
-| 4 | Integration planner and patch generation | Not started |
-| 5 | Validation pipeline and bounded auto-repair | Not started |
-| 6 | VS Code extension | Not started |
-| 7 | MCP client and permissions | Not started |
-| 8 | Skill registry and selection | Not started |
-| 9 | Web dashboard | Not started |
-| 10 | Enterprise hardening | Not started |
+| Phase | Scope                                                                            | State       |
+| ----- | -------------------------------------------------------------------------------- | ----------- |
+| 0     | Monorepo scaffold, architecture document                                         | Complete    |
+| 1     | Agent runtime, provider abstraction, tool registry, security/exec/fs/git engines | Complete    |
+| 2     | API IR, spec parsers, endpoint index, auth model                                 | Not started |
+| 3     | AST indexing, symbols, references, dependency graph                              | Not started |
+| 4     | Integration planner and patch generation                                         | Not started |
+| 5     | Validation pipeline and bounded auto-repair                                      | Not started |
+| 6     | VS Code extension                                                                | Not started |
+| 7     | MCP client and permissions                                                       | Not started |
+| 8     | Skill registry and selection                                                     | Not started |
+| 9     | Web dashboard                                                                    | Not started |
+| 10    | Enterprise hardening                                                             | Not started |
 
 ## Requirements
 

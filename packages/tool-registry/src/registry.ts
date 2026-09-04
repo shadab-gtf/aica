@@ -3,8 +3,8 @@ import type { z } from 'zod';
 import type { Result } from '@aica/shared';
 import { err, errors, ok } from '@aica/shared';
 
-import type { ToolCategory, ToolDefinition, ToolSpec } from './tool.js';
-import { toToolSpec } from './tool.js';
+import type { AnyToolDefinition, ToolCategory, ToolDefinition, ToolSpec } from './tool.js';
+import { eraseTool, toToolSpec } from './tool.js';
 
 /**
  * The tool registry.
@@ -16,11 +16,23 @@ import { toToolSpec } from './tool.js';
  * the same dispatch and approval machinery as built-in tools.
  */
 export class ToolRegistry {
-  private readonly tools = new Map<string, ToolDefinition<z.ZodTypeAny, unknown>>();
+  private readonly tools = new Map<string, AnyToolDefinition>();
 
+  /**
+   * Register a tool, preserving its inferred schema and output types at the
+   * call site. Erasure for storage happens here, once.
+   */
   register<Schema extends z.ZodTypeAny, Output>(
     definition: ToolDefinition<Schema, Output>,
   ): Result<void> {
+    return this.registerErased(eraseTool(definition));
+  }
+
+  /**
+   * Register an already-erased tool. This is the path MCP tools take, since
+   * their schemas are discovered at runtime and have no static type.
+   */
+  registerErased(definition: AnyToolDefinition): Result<void> {
     if (!/^[a-z][a-z0-9_]*$/.test(definition.name)) {
       return err(
         errors.invalidInput(
@@ -47,13 +59,19 @@ export class ToolRegistry {
       );
     }
 
-    this.tools.set(definition.name, definition as unknown as ToolDefinition<z.ZodTypeAny, unknown>);
+    this.tools.set(definition.name, definition);
     return ok(undefined);
   }
 
-  registerAll(definitions: readonly ToolDefinition<z.ZodTypeAny, never>[]): Result<void> {
+  /**
+   * Register several tools, stopping at the first rejection.
+   *
+   * Takes already-erased definitions so a heterogeneous array of tools with
+   * different schemas can be passed without the caller casting each one.
+   */
+  registerAll(definitions: readonly AnyToolDefinition[]): Result<void> {
     for (const definition of definitions) {
-      const result = this.register(definition as ToolDefinition<z.ZodTypeAny, unknown>);
+      const result = this.registerErased(definition);
       if (!result.ok) return result;
     }
     return ok(undefined);
@@ -63,7 +81,7 @@ export class ToolRegistry {
     return this.tools.delete(name);
   }
 
-  get(name: string): ToolDefinition<z.ZodTypeAny, unknown> | undefined {
+  get(name: string): AnyToolDefinition | undefined {
     return this.tools.get(name);
   }
 
@@ -75,11 +93,11 @@ export class ToolRegistry {
     return this.tools.size;
   }
 
-  list(): readonly ToolDefinition<z.ZodTypeAny, unknown>[] {
+  list(): readonly AnyToolDefinition[] {
     return [...this.tools.values()];
   }
 
-  byCategory(category: ToolCategory): readonly ToolDefinition<z.ZodTypeAny, unknown>[] {
+  byCategory(category: ToolCategory): readonly AnyToolDefinition[] {
     return this.list().filter((tool) => tool.category === category);
   }
 

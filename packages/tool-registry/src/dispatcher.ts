@@ -13,7 +13,7 @@ import {
 } from '@aica/shared';
 import type { ApprovalGate, Redactor } from '@aica/security-engine';
 
-import type { ToolContext, ToolDefinition } from './tool.js';
+import type { AnyToolDefinition, ToolContext } from './tool.js';
 import type { ToolRegistry } from './registry.js';
 
 /**
@@ -143,7 +143,7 @@ export class ToolDispatcher {
         ),
       });
     }
-    const input = parsed.data as z.infer<typeof tool.inputSchema>;
+    const input: unknown = parsed.data;
     const validatedSubject = this.describe(tool, input);
 
     this.onCall?.({ callId, tool: tool.name, risk: tool.risk, argsPreview });
@@ -216,7 +216,7 @@ export class ToolDispatcher {
   }
 
   private async execute(
-    tool: ToolDefinition<z.ZodTypeAny, unknown>,
+    tool: AnyToolDefinition,
     input: unknown,
     context: ToolContext,
   ): Promise<Result<unknown>> {
@@ -303,7 +303,7 @@ export class ToolDispatcher {
     };
   }
 
-  private describe(tool: ToolDefinition<z.ZodTypeAny, unknown>, input: unknown): string {
+  private describe(tool: AnyToolDefinition, input: unknown): string {
     if (!tool.describeCall) return tool.name;
     try {
       return tool.describeCall(input);

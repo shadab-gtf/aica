@@ -14,7 +14,13 @@ import {
   type AgentEvent,
 } from '@aica/shared';
 import { ApprovalGate, ApprovalMode, Redactor } from '@aica/security-engine';
-import { ToolDispatcher, ToolRegistry, defineTool } from '@aica/tool-registry';
+import {
+  ToolDispatcher,
+  ToolRegistry,
+  defineTool,
+  eraseTool,
+  type AnyToolDefinition,
+} from '@aica/tool-registry';
 
 import { ScriptedProvider, type ScriptedTurn } from './providers/scripted.js';
 import { OpenRouterProvider } from './providers/openrouter.js';
@@ -79,14 +85,18 @@ function harness(
   options: {
     mode?: ApprovalMode;
     granted?: boolean;
-    tools?: ReturnType<typeof defineTool>[];
+    tools?: readonly AnyToolDefinition[];
     maxConsecutiveFailures?: number;
     redactor?: Redactor;
   } = {},
 ): Harness {
   const registry = new ToolRegistry();
-  for (const tool of options.tools ?? [readFile, applyPatch, failing]) {
-    registry.register(tool as never);
+  for (const tool of options.tools ?? [
+    eraseTool(readFile),
+    eraseTool(applyPatch),
+    eraseTool(failing),
+  ]) {
+    registry.registerErased(tool);
   }
 
   const dispatcher = new ToolDispatcher({
@@ -403,7 +413,7 @@ describe('AgentRuntime', () => {
 
     const h = harness(
       [{ toolCalls: [{ name: 'leak_tool', argumentsJson: '{}' }] }, { text: 'done' }],
-      { tools: [leaky], redactor },
+      { tools: [eraseTool(leaky)], redactor },
     );
 
     await h.runtime.run(runOptions(h));
