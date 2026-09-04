@@ -1,0 +1,6 @@
+dist
+out
+coverage
+.next
+pnpm-lock.yaml
+*.tsbuildinfo

@@ -1,0 +1,25 @@
+node_modules/
+dist/
+out/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+.turbo/
+.vscode-test/
+*.vsix
+
+# local state / secrets
+.env
+.env.*
+!.env.example
+.aica/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini

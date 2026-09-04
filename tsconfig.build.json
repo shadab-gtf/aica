@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/schemas" },
+    { "path": "packages/security-engine" },
+    { "path": "packages/exec-engine" },
+    { "path": "packages/fs-engine" },
+    { "path": "packages/git-engine" },
+    { "path": "packages/tool-registry" },
+    { "path": "packages/agent-core" }
+  ]
+}
