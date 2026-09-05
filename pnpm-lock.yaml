@@ -30,6 +30,8 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)(yaml@2.9.0)
 
+  fixtures/sample-app: {}
+
   packages/agent-core:
     dependencies:
       '@aica/schemas':
@@ -68,6 +70,30 @@ importers:
       '@aica/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/code-graph:
+    dependencies:
+      '@aica/code-intelligence':
+        specifier: workspace:*
+        version: link:../code-intelligence
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/code-intelligence:
+    dependencies:
+      '@aica/fs-engine':
+        specifier: workspace:*
+        version: link:../fs-engine
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/exec-engine:
     dependencies:

@@ -11,6 +11,10 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '**/*.tsbuildinfo',
+      // Fixtures stand in for a user's repository. They are inputs to the
+      // indexer, not code this project maintains, and holding them to our lint
+      // rules would stop them representing the code we actually have to handle.
+      'fixtures/**',
     ],
   },
   js.configs.recommended,

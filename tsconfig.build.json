@@ -23,6 +23,12 @@
       "path": "packages/fs-engine/tsconfig.build.json"
     },
     {
+      "path": "packages/code-intelligence/tsconfig.build.json"
+    },
+    {
+      "path": "packages/code-graph/tsconfig.build.json"
+    },
+    {
       "path": "packages/git-engine/tsconfig.build.json"
     },
     {

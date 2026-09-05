@@ -1,7 +1,7 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phases 0-2 complete (gate green: build, typecheck, lint, format, 705 tests).
-Living document; revised at each phase gate.
+**Status:** Phases 0-3 complete except Tree-sitter parsing (gate green: build, typecheck,
+lint, format, 909 tests). Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
 ---
@@ -301,3 +301,35 @@ that cannot be validated is stated as unvalidated rather than assumed.
   `METHOD /path` statements yield endpoints; response shapes come from example
   payloads or stay `unknown`. Instruction-shaped prose is extracted as a
   description and never acted on, per §7.
+
+### 9.3 Code intelligence and the graph (Phase 3)
+
+- **Analysis is syntactic on purpose.** `ts.createSourceFile`, not `ts.Program`:
+  no type checker, no module resolution, no `node_modules`. The agent has to
+  index a repository it has just opened, whose dependencies may not be installed
+  and whose code may not compile. A type-aware pass would fail exactly when the
+  codebase is in the state the agent most needs to understand it.
+- **Resolution is graded, not binary.** A name resolves to a workspace
+  declaration, comes from an external package, is reached through a property
+  access, or resolves to nothing. Counting these together would make a healthy
+  index of a dependency-heavy project look broken; `resolutionRate` excludes
+  what was never in scope, so it measures what it claims to.
+- **Members are never resolved by name.** Which declaration `order.status` means
+  depends on the type of `order`. Matching it against a same-named import would
+  attribute `obj.format()` to an imported `format` — a wrong answer dressed up
+  as a resolved one.
+- **Locals are not indexed.** A `const response` inside a function is not
+  addressable from elsewhere; indexing it would bury real declarations and
+  collide with every other function using the name.
+- **Impact analysis does not follow `declares` backwards.** A file declaring a
+  symbol is not a dependent of it. Following that edge inbound would let any
+  symbol change reach its own file and from there everything importing the file,
+  reporting the whole repository as affected by a one-line change.
+- **Exposure is distinguished from use.** A barrel re-exporting a type does not
+  depend on it the way a caller does, so `exposes` is its own edge kind.
+- **Blind spots are reported.** Dynamic dispatch, reflection, and unresolvable
+  members produce no edges, so an impact report says where the analysis could
+  not see rather than implying completeness.
+- **Retrieval enforces its own budget.** Sections 51 and 63 forbid dumping a
+  repository into a prompt; the byte and item caps live inside `retrieve`, not
+  in its callers, because the failure mode is a caller that means well.

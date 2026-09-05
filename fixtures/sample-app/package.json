@@ -1,0 +1,7 @@
+{
+  "name": "@aica-fixture/sample-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Synthetic target repository used by indexing and golden-scenario tests. Not built, not linted, not typechecked: it stands in for a user's project.",
+  "type": "module"
+}
