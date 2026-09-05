@@ -6,9 +6,8 @@
     "declaration": false,
     "declarationMap": false,
     "incremental": false,
-    "baseUrl": ".",
     "paths": {
-      "@aica/*": ["packages/*/src/index.ts"]
+      "@aica/*": ["./packages/*/src/index.ts"]
     },
     "types": ["node"]
   },

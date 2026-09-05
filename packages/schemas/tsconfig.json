@@ -6,7 +6,6 @@
     "declaration": false,
     "declarationMap": false,
     "incremental": false,
-    "baseUrl": ".",
     "paths": {
       "@aica/*": ["../*/src/index.ts"]
     }

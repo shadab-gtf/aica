@@ -201,4 +201,6 @@ export const errors = {
     new AgentError(ErrorCode.AUTH_FAILURE, message, { details }),
   rateLimited: (message: string, details?: Details): AgentError =>
     new AgentError(ErrorCode.RATE_LIMITED, message, { details }),
+  networkError: (message: string, details?: Details): AgentError =>
+    new AgentError(ErrorCode.NETWORK_ERROR, message, { details }),
 } as const;

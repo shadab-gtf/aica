@@ -11,6 +11,12 @@
       "path": "packages/security-engine/tsconfig.build.json"
     },
     {
+      "path": "packages/api-ir/tsconfig.build.json"
+    },
+    {
+      "path": "packages/api-engine/tsconfig.build.json"
+    },
+    {
       "path": "packages/exec-engine/tsconfig.build.json"
     },
     {

@@ -1,6 +1,7 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phase 0 (Discovery) complete. Living document; revised at each phase gate.
+**Status:** Phases 0-2 complete (gate green: build, typecheck, lint, format, 705 tests).
+Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
 ---
@@ -252,3 +253,51 @@ that cannot be validated is stated as unvalidated rather than assumed.
 - **Argument-vector command execution** — makes shell injection structurally impossible rather
   than relying on sanitization.
 - **`Result` over exceptions at every boundary** — a recoverable tool failure must not end a run.
+
+## 9. Design records
+
+### 9.1 API IR (Phase 2)
+
+- **Security is two levels, not one.** `Endpoint.security` is a list of options,
+  each a conjunction of requirements. OpenAPI's list means "or" between entries
+  and "and" within one, and flattening the two would tell the agent that either
+  half of an API-key-plus-signature pair suffices — a wrong integration rather
+  than an incomplete one.
+- **References are inlined, cycles are named.** Every consumer sees one complete
+  shape, so path resolution and contract comparison need no resolver. A
+  recursive type terminates as a `ref` node carrying its name.
+- **Gaps are values.** A source that does not describe a shape produces
+  `unknown` with a reason; parsers never infer a type from a field name.
+- **Wire format is not schema.** Query, path, and header values are strings on
+  the wire, so an observed string never contradicts a declared `integer`. The
+  observed value is still checked against a declared enumeration, which is where
+  real mismatches in that position occur.
+- **A pasted request never yields a stored credential.** The cURL and Postman
+  parsers record the auth _scheme_ and discard the value, emitting a warning
+  that names the environment variable to set. Credential-shaped values are also
+  excluded from inferred examples.
+- **Observation is evidence, bounded by what was observed.** Schemas inferred
+  from payloads mark a field required only when it appeared in every sample, and
+  a lone `null` yields nullability rather than a type.
+
+### 9.2 HTTP executor and documentation parser (Phase 2)
+
+- **The executor is where the phase-1 policies converge.** SSRF validation, risk
+  classification, the approval gate, and secret resolution all meet at the one
+  component in `api-engine` with a side effect. `SsrfPolicy`, `classifyHttpRisk`,
+  and the `Limits.maxHttp*` values were built in phase 1 for exactly this.
+- **Redirects are followed manually and credentials dropped across origins.**
+  Letting the runtime follow redirects forwards `Authorization` to whatever host
+  the response names. Each hop is re-validated against the SSRF policy before it
+  is taken.
+- **Authorization precedes DNS.** A request the user would refuse is never
+  announced to a resolver.
+- **A non-2xx response is a result, not an error.** `Err` is reserved for
+  requests that could not be attempted or completed.
+- **The response's inferred shape is returned with it.** A real response is
+  evidence ranking above the specification, so it feeds straight into
+  `compareSchemas` as the observed side.
+- **Documentation is the weakest source and behaves like it.** Only explicit
+  `METHOD /path` statements yield endpoints; response shapes come from example
+  payloads or stay `unknown`. Instruction-shaped prose is extracted as a
+  description and never acted on, per §7.
