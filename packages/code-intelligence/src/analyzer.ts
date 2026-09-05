@@ -32,6 +32,7 @@ import type {
   ReferenceRecord,
   SymbolKind,
   SymbolRecord,
+  UrlLiteral,
 } from './symbols.js';
 import { symbolId } from './symbols.js';
 
@@ -66,6 +67,7 @@ export interface AnalysisResult {
   readonly imports: ImportRecord[];
   readonly exports: ExportRecord[];
   readonly diagnostics: string[];
+  readonly urlLiterals: UrlLiteral[];
 }
 
 /**
@@ -106,6 +108,7 @@ export function analyzeFile(
     imports: result.imports,
     exports: result.exports,
     diagnostics: result.diagnostics,
+    urlLiterals: result.urlLiterals,
   };
 }
 
@@ -135,6 +138,7 @@ class FileAnalyzer {
   private readonly imports: ImportRecord[] = [];
   private readonly exports: ExportRecord[] = [];
   private readonly diagnostics: string[] = [];
+  private readonly urlLiterals: UrlLiteral[] = [];
   /** Stack of enclosing symbol ids, so a reference knows where it sits. */
   private readonly containers: string[] = [];
   /**
@@ -165,6 +169,7 @@ class FileAnalyzer {
       imports: this.imports,
       exports: this.exports,
       diagnostics: this.diagnostics,
+      urlLiterals: this.urlLiterals,
     };
   }
 
@@ -548,6 +553,16 @@ class FileAnalyzer {
       return;
     }
 
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      this.recordUrlLiteral(node.text, node, false);
+      return;
+    }
+
+    if (ts.isTemplateExpression(node)) {
+      this.recordTemplate(node);
+      return;
+    }
+
     if (ts.isPropertyAccessExpression(node)) {
       // `service.list()` is a use of `service` and a use of the member `list`.
       // The receiver is visited normally; the member is recorded explicitly so
@@ -558,6 +573,36 @@ class FileAnalyzer {
     }
 
     this.walkBody(node);
+  }
+
+  /**
+   * Reconstruct a template literal with its interpolations collapsed to `{}`.
+   *
+   * `` `/orders/${id}` `` becomes `/orders/{}`, which is exactly what
+   * `pathSignature` produces for a documented `/orders/{orderId}`. The two
+   * become comparable without either being guessed at — and the interpolated
+   * expressions are still walked, so a value used to build a URL is not lost as
+   * a reference.
+   */
+  private recordTemplate(node: ts.TemplateExpression): void {
+    let text = node.head.text;
+    for (const span of node.templateSpans) {
+      text += `{}${span.literal.text}`;
+      this.visitExpression(span.expression);
+    }
+    this.recordUrlLiteral(text, node, true);
+  }
+
+  private recordUrlLiteral(value: string, node: ts.Node, interpolated: boolean): void {
+    if (!looksLikeUrlOrPath(value)) return;
+
+    const from = this.currentContainer();
+    this.urlLiterals.push({
+      value,
+      location: this.locationOf(node),
+      interpolated,
+      ...(from ? { fromSymbolId: from } : {}),
+    });
   }
 
   /** How a member name is used: called, assigned to, or read. */
@@ -829,6 +874,30 @@ function isAssignment(token: ts.BinaryOperatorToken): boolean {
     (token.kind >= ts.SyntaxKind.FirstCompoundAssignment &&
       token.kind <= ts.SyntaxKind.LastCompoundAssignment)
   );
+}
+
+/**
+ * Whether a string literal is worth keeping as a URL or request path.
+ *
+ * The bar is deliberately specific. Every codebase is full of strings, and a
+ * loose test would fill the index with CSS classes and log messages. A literal
+ * qualifies when it is an absolute URL, or when it starts with `/` and looks
+ * like a path segment rather than a regex or a comment.
+ */
+function looksLikeUrlOrPath(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length < 2 || trimmed.length > 512) return false;
+
+  if (/^https?:\/\//i.test(trimmed)) return true;
+
+  if (!trimmed.startsWith('/')) return false;
+  // `//` starts a comment or a protocol-relative URL; `/.../` is a regex.
+  if (trimmed.startsWith('//')) return false;
+  if (trimmed.endsWith('/') && trimmed.length > 1) return false;
+
+  // Path segments: letters, digits, and the punctuation URLs actually use,
+  // plus `{}` where an interpolation was collapsed.
+  return /^\/[A-Za-z0-9\-._~%{}$:/]*$/.test(trimmed);
 }
 
 function isFunctionLike(node: ts.Node): boolean {

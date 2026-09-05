@@ -131,6 +131,45 @@ export const privacyConfigSchema = z.object({
   localOnly: z.boolean().default(false),
 });
 
+/**
+ * Coding agents this system can delegate implementation to.
+ *
+ * A coding agent is an execution provider, not the product's intelligence: the
+ * planner writes the brief and the validation pipeline decides whether the
+ * result is any good. Adding one here is meant to be the whole change needed to
+ * switch, which is why nothing provider-specific appears in the schema.
+ */
+export const codingAgentKindSchema = z.enum(['jules', 'none']);
+
+export const codingAgentConfigSchema = z.object({
+  provider: codingAgentKindSchema.default('none'),
+  /**
+   * Where the API key comes from, e.g. `env:JULES_API_KEY`. A literal key fails
+   * validation: the reference is the whole point.
+   */
+  apiKeyRef: secretReferenceSchema.optional(),
+  /** Provider-assigned repository identifier the agent works on. */
+  sourceId: z.string().min(1).optional(),
+  /** Branch work starts from. Defaults to the repository's own default. */
+  startingBranch: z.string().min(1).optional(),
+  /**
+   * Require the agent to surface its plan for approval before executing.
+   * On by default: an agent editing a repository unattended is exactly what the
+   * approval gate exists to prevent.
+   */
+  requirePlanApproval: z.boolean().default(true),
+  /** Wall-clock budget for one delegated task. */
+  maxDurationMs: z
+    .number()
+    .int()
+    .positive()
+    .default(30 * 60 * 1000),
+  /** Automatic repair rounds after a failed validation. */
+  maxRepairAttempts: z.number().int().min(0).max(10).default(3),
+  pollIntervalMs: z.number().int().positive().default(5_000),
+  requestTimeoutMs: z.number().int().positive().default(30_000),
+});
+
 export const agentConfigSchema = z.object({
   $schema: z.string().optional(),
   version: z.literal(1).default(1),
@@ -140,6 +179,7 @@ export const agentConfigSchema = z.object({
   validation: validationConfigSchema.default({}),
   privacy: privacyConfigSchema.default({}),
   mcpServers: z.array(mcpServerConfigSchema).default([]),
+  codingAgent: codingAgentConfigSchema.default({}),
   apis: z.array(apiSourceConfigSchema).default([]),
   /** Skills enabled for this project; empty means automatic selection. */
   skills: z.array(z.string()).default([]),
@@ -154,6 +194,8 @@ export type ModelConfig = z.infer<typeof modelConfigSchema>;
 export type PermissionsConfig = z.infer<typeof permissionsConfigSchema>;
 export type ValidationConfig = z.infer<typeof validationConfigSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
+export type CodingAgentKind = z.infer<typeof codingAgentKindSchema>;
+export type CodingAgentConfig = z.infer<typeof codingAgentConfigSchema>;
 export type ApiSourceConfig = z.infer<typeof apiSourceConfigSchema>;
 export type PrivacyConfig = z.infer<typeof privacyConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;

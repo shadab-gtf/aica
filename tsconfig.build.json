@@ -29,6 +29,12 @@
       "path": "packages/code-graph/tsconfig.build.json"
     },
     {
+      "path": "packages/integration-planner/tsconfig.build.json"
+    },
+    {
+      "path": "packages/coding-agent/tsconfig.build.json"
+    },
+    {
       "path": "packages/git-engine/tsconfig.build.json"
     },
     {

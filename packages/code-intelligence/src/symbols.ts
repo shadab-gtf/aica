@@ -175,6 +175,30 @@ export interface FileIndex {
   readonly exports: readonly ExportRecord[];
   /** Syntax errors found while parsing; the file is still indexed. */
   readonly diagnostics: readonly string[];
+  /** URL- and path-shaped string literals, for matching code to an API. */
+  readonly urlLiterals: readonly UrlLiteral[];
+}
+
+/**
+ * A string literal that looks like a URL or a request path.
+ *
+ * This is what lets the system answer its central question — "does this
+ * codebase already call the endpoint I am about to integrate?" — from indexed
+ * facts rather than by grepping at planning time.
+ *
+ * Template literals are recorded with their interpolations replaced by `{}`, so
+ * `` `/orders/${id}` `` becomes `/orders/{}`, which is exactly the shape
+ * `pathSignature` produces for a documented endpoint. The two are then directly
+ * comparable without either side being guessed at.
+ */
+export interface UrlLiteral {
+  /** The literal as written, with interpolations collapsed to `{}`. */
+  readonly value: string;
+  readonly location: Location;
+  /** Symbol whose body contains it, when inside one. */
+  readonly fromSymbolId?: string;
+  /** True when the literal came from a template with interpolations. */
+  readonly interpolated: boolean;
 }
 
 export function symbolId(file: string, name: string, container?: string): string {

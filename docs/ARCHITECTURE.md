@@ -1,6 +1,6 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phases 0-3 complete (gate green: build, typecheck, lint, format, 909 tests).
+**Status:** Phases 0-4 complete (gate green: build, typecheck, lint, format, 1104 tests).
 Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
@@ -94,6 +94,8 @@ packages/
   api-ir/             Canonical API intermediate representation (types + invariants)
   api-engine/         OpenAPI/Postman/cURL/doc parsers, endpoint index + search, HTTP executor
   code-intelligence/  AST parsing (TS Compiler API), symbol/reference indexing, retrieval
+  integration-planner/ Intent, API<->code matching, plan construction, executor briefs
+  coding-agent/       CodingAgentProvider contract, delegation loop, Jules adapter
   code-graph/         Code knowledge graph: nodes, edges, subgraph queries, impact analysis
   mcp-engine/         MCP client, server/tool discovery, per-tool permission enforcement
   skill-engine/       Skill registry, task-based selection, scoped loading
@@ -341,3 +343,47 @@ that cannot be validated is stated as unvalidated rather than assumed.
 - **Retrieval enforces its own budget.** Sections 51 and 63 forbid dumping a
   repository into a prompt; the byte and item caps live inside `retrieve`, not
   in its callers, because the failure mode is a caller that means well.
+
+### 9.4 Planning and delegation (Phase 4)
+
+- **Intent is read deterministically first.** "Integrate POST /payments into the
+  checkout form" states its action, endpoint, and target; asking a model to
+  extract them adds latency and a failure mode to recover what the sentence
+  already contains. What stays ambiguous is reported, not guessed.
+- **API-to-code matching is structural.** A documented `/orders/{orderId}` has
+  the signature `/orders/{}`; a template literal `` `/orders/${id}` `` collapses
+  to the same string. Comparing two indexed facts is what makes the result
+  usable as evidence rather than as a suggestion, so URL literals are now part
+  of the index.
+- **A plan names few files.** Targets are capped and score-filtered: a plan
+  listing half the repository is not a plan, and a file sharing one word with
+  the request is not a target.
+- **Being named beats being clever.** A file the user named outranks one the
+  matcher found, including one that already calls the endpoint.
+- **The brief is the product's own work.** Whatever executes a plan receives a
+  specification derived from indexed facts — never the raw user message, never
+  the repository. That is what keeps an execution provider swappable.
+
+### 9.5 Coding-agent providers (Phase 4)
+
+Full detail in `CODING-AGENTS.md`.
+
+- **A coding agent is an execution provider, not the intelligence.** It is handed
+  a brief and returns a patch. It never sees the raw request, never picks the
+  endpoint, never decides whether the work is done.
+- **`CodingAgentProvider` is not `AIProvider`.** One streams tokens for a
+  conversation driven turn by turn; the other is a long-running out-of-process
+  job, polled, returning a diff. Fusing them would leave half of either
+  interface meaningless.
+- **"Completed" is not "verified".** No provider state maps to verified. Without
+  a validation pipeline the result is returned marked `unvalidated`, which is
+  the one thing the loop must never quietly upgrade.
+- **Vendor types stay in the vendor's directory.** Only the provider class is
+  exported; if a caller could import `JulesSession`, swapping providers would
+  stop being a configuration change.
+- **Unsupported is stated, not faked.** The Jules API documents no cancellation,
+  so `cancel()` returns `UNSUPPORTED` rather than silently doing nothing.
+- **Non-idempotent calls are never retried.** A retried `create` after an
+  ambiguous timeout would start a second agent on the same repository.
+- **Every loop is bounded**, and all three separately: polls, wall-clock, and
+  repair attempts.

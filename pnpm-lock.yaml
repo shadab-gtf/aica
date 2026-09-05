@@ -95,6 +95,18 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/coding-agent:
+    dependencies:
+      '@aica/integration-planner':
+        specifier: workspace:*
+        version: link:../integration-planner
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/exec-engine:
     dependencies:
       '@aica/security-engine':
@@ -121,6 +133,24 @@ importers:
       '@aica/security-engine':
         specifier: workspace:*
         version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/integration-planner:
+    dependencies:
+      '@aica/api-engine':
+        specifier: workspace:*
+        version: link:../api-engine
+      '@aica/api-ir':
+        specifier: workspace:*
+        version: link:../api-ir
+      '@aica/code-graph':
+        specifier: workspace:*
+        version: link:../code-graph
+      '@aica/code-intelligence':
+        specifier: workspace:*
+        version: link:../code-intelligence
       '@aica/shared':
         specifier: workspace:*
         version: link:../shared

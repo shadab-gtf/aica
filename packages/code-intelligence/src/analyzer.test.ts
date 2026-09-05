@@ -331,6 +331,46 @@ describe('JSX', () => {
   });
 });
 
+describe('URL literals', () => {
+  it('collapses a template interpolation to {}, matching an endpoint signature', () => {
+    const result = analyze('export const get = (id: string) => fetch(`/orders/${id}`);');
+    expect(result.urlLiterals[0]).toMatchObject({ value: '/orders/{}', interpolated: true });
+  });
+
+  it('records a plain path and an absolute URL', () => {
+    const result = analyze(`
+      export const BASE = 'https://api.example.com/v1';
+      export function create() { return fetch('/orders'); }
+    `);
+    const values = result.urlLiterals.map((literal) => literal.value);
+    expect(values).toEqual(expect.arrayContaining(['https://api.example.com/v1', '/orders']));
+  });
+
+  it('attributes a literal to the declaration containing it', () => {
+    const result = analyze("export function cancel() { return fetch('/orders/cancel'); }");
+    expect(result.urlLiterals[0]?.fromSymbolId).toBe('src/sample.ts#cancel');
+  });
+
+  it('still records the values interpolated into a URL as references', () => {
+    const result = analyze(`
+      import { orderId } from './state.js';
+      export function get() { return fetch(\`/orders/\${orderId}\`); }
+    `);
+    expect(result.references.some((reference) => reference.name === 'orderId')).toBe(true);
+  });
+
+  it.each([
+    'plain text',
+    'a sentence with / in it',
+    '//a comment-looking string',
+    'text/plain',
+    '/path/with spaces',
+  ])('does not treat %s as a URL', (value) => {
+    const result = analyze(`export const x = ${JSON.stringify(value)};`);
+    expect(result.urlLiterals).toEqual([]);
+  });
+});
+
 describe('positions', () => {
   it('reports 1-based lines and columns, as editors do', () => {
     const result = analyze('const a = 1;\nexport function target() {}');
