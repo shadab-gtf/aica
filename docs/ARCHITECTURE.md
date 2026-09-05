@@ -86,7 +86,7 @@ packages/
   shared/             Result/error types, IDs, event contracts, logger, clock. Zero deps.
   schemas/            Zod schemas: config, protocol, events, tool I/O. Single validation source.
   rpc/                JSON-RPC 2.0 peer + length-prefixed framing. Transport-agnostic.
-  security-engine/    Redaction, path policy, command policy, risk classification, approvals, SSRF
+  security-engine/    Redaction, path/command policy, risk, approvals, SSRF, audit log, egress ledger
   exec-engine/        Policy-gated child-process execution: timeouts, limits, env filtering
   fs-engine/          Workspace filesystem + transactional patch application
   git-engine/         Git status/diff/log/branch/commit with destructive-op refusal
@@ -611,3 +611,63 @@ Full detail in `CODING-AGENTS.md`.
   tested configuration is `next dev` is a dashboard nobody has tested: server
   components, caching, and headers all behave differently once built, and that
   is where a dashboard breaks.
+
+### 9.13 Audit, limits, and observability (Phase 10)
+
+- **The audit log is append-only and records refusals.** There is no method that
+  edits or removes an entry: a log that can be corrected is a log that can be
+  laundered. And most audit logs record what happened, while the question they
+  are usually opened for is what was _attempted_ — a refused write, a blocked
+  path, a declined approval — so a denial is recorded exactly as carefully as a
+  permission.
+- **Redaction happens on the way in.** A secret that reaches storage has leaked
+  whatever a reader does afterwards, so entries are redacted in `record`, before
+  an entry exists.
+- **Persistence never fails the action.** Writing history is not allowed to be
+  the reason work stops. A sink that throws costs the entry, not the run.
+- **The egress ledger records destinations and volumes, never payloads.** §7
+  names "a record of what left the machine" as a control, and it is the one that
+  makes the other two checkable — a privacy setting nobody can verify is a
+  promise. Recording the bodies sent to a model would put on disk a copy of
+  exactly the source the user was worried about sending anywhere.
+- **`localOnly` is enforced, not merely declared**, and loopback is exempt: a
+  local Supabase or a local MCP server never leaves the machine, and counting
+  them as egress would make the setting unusable while protecting nothing.
+- **A budget is checked, not enforced by interruption.** The caller decides
+  where it is safe to stop; killing a run mid-write to save a token would trade
+  money for a half-applied patch. Exhaustion is a normal outcome reported with
+  what the run managed, so a limit can be raised rather than a run restarted.
+- **The file limit is checked before the write.** A patch refused is a patch the
+  user still has; a patch applied past the limit is a repository already
+  rewritten.
+- **"Validated" counts only runs that changed something and passed.** A run that
+  wrote nothing had nothing to validate, and counting it would inflate the one
+  number a reader is most likely to trust.
+
+### 9.14 What sandboxing this actually provides
+
+Stated plainly, because a security posture that overclaims is worse than one
+that is modest.
+
+**Enforced.** Commands run with `shell: false` from an allowlisted program plus
+an argument vector, so shell injection is structurally impossible rather than
+filtered. The working directory is confined to the project. The environment is
+filtered, so a child sees what it was configured to see rather than everything
+the editor's process holds. Wall-clock timeouts and output caps apply, and a
+timed-out process tree is terminated. Every filesystem path resolves through the
+path policy, symlinks included, and writes are transactional. Outbound requests
+are validated against the SSRF policy, private ranges and metadata endpoints
+included, with redirects re-validated.
+
+**Not enforced.** A child process is not confined by the operating system: it
+runs with the user's own privileges and can read any file that user can read,
+and reach any host the machine can reach. The controls above decide _what is
+started_; they do not contain it afterwards. A genuinely hostile program in the
+allowlist, or a hostile MCP server, is bounded by the user account and not by
+this system.
+
+That gap is why the allowlist is small and by program name, why MCP tools
+default to requiring approval, and why an untrusted server's claim about its own
+tools may only raise the risk assigned to them. Real containment needs an OS
+sandbox, and adding one is a change to `exec-engine` alone — the interface
+already assumes a process boundary.

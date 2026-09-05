@@ -259,6 +259,24 @@ describe('matching endpoints to code', () => {
   });
 });
 
+describe('literal signatures', () => {
+  it('drops an interpolated base URL from the front of a path', () => {
+    // The base is not part of the path. Leaving it in produces `{}/orders`,
+    // which matches no documented endpoint at all.
+    expect(literalSignature('{}/orders')).toBe('/orders');
+    expect(literalSignature('{}/orders/{}')).toBe(literalSignature('/orders/{}'));
+  });
+
+  it('still treats a trailing interpolation as a suffix, not a segment', () => {
+    expect(literalSignature('/orders{}')).toBe('/orders');
+  });
+
+  it('keeps an interpolation that is its own path segment', () => {
+    // `/orders/{id}` is a path parameter and must stay comparable to one.
+    expect(literalSignature('/orders/{}')).toContain('orders');
+  });
+});
+
 describe('observing the repository conventions', () => {
   it('identifies the API client layer', () => {
     expect(findClientConventions(code).clientFiles).toContain('src/api/client.ts');

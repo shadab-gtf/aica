@@ -226,6 +226,26 @@ export const runSummarySchema = z.object({
   patchesProposed: z.number(),
   patchesApplied: z.number(),
   filesChanged: z.array(z.string()),
+  /** What the run consumed. */
+  usage: z.object({
+    iterations: z.number(),
+    toolCalls: z.number(),
+    elapsedMs: z.number(),
+    tokens: z.number(),
+    costUsd: z.number(),
+  }),
+  /**
+   * What left the machine, by host. Volumes and destinations, never payloads —
+   * recording the bodies sent to a model would put a copy of the source on disk.
+   */
+  egress: z.array(
+    z.object({
+      host: z.string(),
+      requests: z.number(),
+      blocked: z.number(),
+      requestBytes: z.number(),
+    }),
+  ),
   /**
    * Absent when nothing was written. "Nothing to validate" and "validation
    * passed" are different outcomes and the UI has to be able to tell them
@@ -282,6 +302,53 @@ export const runRecordSchema = z.object({
   toolCalls: z.number(),
   filesChanged: z.number(),
   validationPassed: z.boolean().optional(),
+});
+
+export const auditEntrySchema = z.object({
+  id: z.string(),
+  at: z.string(),
+  runId: z.string().optional(),
+  actor: z.string(),
+  action: z.string(),
+  subject: z.string(),
+  decision: z.string(),
+  risk: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+export const observabilitySchema = z.object({
+  runs: z.object({
+    total: z.number(),
+    completed: z.number(),
+    failed: z.number(),
+    cancelled: z.number(),
+    filesChanged: z.number(),
+    /**
+     * Runs that changed something and passed their checks. Deliberately not
+     * "runs that passed": a run that wrote nothing had nothing to validate.
+     */
+    validated: z.number(),
+  }),
+  audit: z.object({
+    entries: z.number(),
+    refusals: z.number(),
+    /** What was refused, most recent first. The question this log answers. */
+    recentRefusals: z.array(auditEntrySchema),
+  }),
+  egress: z.object({
+    localOnly: z.boolean(),
+    blocked: z.number(),
+    byHost: z.array(
+      z.object({
+        host: z.string(),
+        kind: z.string(),
+        requests: z.number(),
+        blocked: z.number(),
+        requestBytes: z.number(),
+        responseBytes: z.number(),
+      }),
+    ),
+  }),
 });
 
 // ---------------------------------------------------------------------------
@@ -489,6 +556,25 @@ export const clientMethods = {
     z.object({ patchId: z.string(), files: z.array(z.string()) }),
   ),
 
+  /**
+   * What this project has done, and what it refused to do.
+   *
+   * One method rather than three, because the three answers are read together:
+   * "it ran twelve times, refused four things, and sent 240KB to one host" is a
+   * picture, and the same facts in three places are a scavenger hunt.
+   */
+  observability: method('observability/summary', projectIdParam, observabilitySchema),
+
+  auditTrail: method(
+    'audit/list',
+    projectIdParam.extend({
+      runId: z.string().optional(),
+      refusalsOnly: z.boolean().default(false),
+      limit: z.number().int().positive().max(500).default(100),
+    }),
+    z.object({ entries: z.array(auditEntrySchema) }),
+  ),
+
   discardPatch: method(
     'patch/discard',
     projectIdParam.extend({ patchId: z.string().min(1) }),
@@ -555,6 +641,8 @@ export type ImpactSummary = z.infer<typeof impactSummarySchema>;
 export type PostmanWorkspaceSummary = z.infer<typeof postmanWorkspaceSchema>;
 export type PostmanCollectionSummary = z.infer<typeof postmanCollectionSchema>;
 export type RunSummaryResult = z.infer<typeof runSummarySchema>;
+export type AuditEntrySummary = z.infer<typeof auditEntrySchema>;
+export type ObservabilitySummary = z.infer<typeof observabilitySchema>;
 export type PatchSummary = z.infer<typeof patchSummarySchema>;
 export type PatchContent = z.infer<typeof patchContentSchema>;
 export type RunRecord = z.infer<typeof runRecordSchema>;

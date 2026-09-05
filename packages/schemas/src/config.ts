@@ -196,6 +196,26 @@ export const databaseConfigSchema = z.object({
   batchSize: z.number().int().positive().max(5000).default(500),
 });
 
+/**
+ * What one run may consume (§35).
+ *
+ * Every field is optional and unset means unlimited, which is deliberate: a
+ * limit that appears out of nowhere is a limit nobody can plan around. The two
+ * that are set by default are the ones whose absence has an unbounded downside
+ * — a loop that never stops, and a run that rewrites half a repository.
+ */
+export const limitsConfigSchema = z.object({
+  maxIterations: z.number().int().positive().max(500).default(40),
+  maxToolCalls: z.number().int().positive().max(2000).optional(),
+  maxWallClockMs: z.number().int().positive().optional(),
+  maxTokens: z.number().int().positive().optional(),
+  /** Spend for one run, in whole currency units. */
+  maxCostUsd: z.number().positive().optional(),
+  /** Distinct files one run may change. Past this, split it into reviewable pieces. */
+  maxFilesChanged: z.number().int().positive().max(500).default(25),
+  maxConsecutiveFailures: z.number().int().positive().max(20).default(4),
+});
+
 export const privacyConfigSchema = z.object({
   /** Paths never read into model context, beyond the built-in exclusions. */
   excludePaths: z.array(z.string()).default([]),
@@ -254,6 +274,7 @@ export const agentConfigSchema = z.object({
   permissions: permissionsConfigSchema.default({}),
   validation: validationConfigSchema.default({}),
   privacy: privacyConfigSchema.default({}),
+  limits: limitsConfigSchema.default({}),
   database: databaseConfigSchema.default({}),
   mcpServers: z.array(mcpServerConfigSchema).default([]),
   codingAgent: codingAgentConfigSchema.default({}),
@@ -278,6 +299,7 @@ export type ApiSourceConfig = z.infer<typeof apiSourceConfigSchema>;
 export type PostmanConfig = z.infer<typeof postmanConfigSchema>;
 export type PrivacyConfig = z.infer<typeof privacyConfigSchema>;
 export type DatabaseConfig = z.infer<typeof databaseConfigSchema>;
+export type LimitsConfig = z.infer<typeof limitsConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
 /** The configuration used when a project has none, favouring safety. */

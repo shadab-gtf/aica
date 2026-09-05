@@ -890,6 +890,15 @@ function looksLikeUrlOrPath(value: string): boolean {
 
   if (/^https?:\/\//i.test(trimmed)) return true;
 
+  // A template whose first piece is an interpolation, followed by a path:
+  // `` `${BASE_URL}/orders` `` collapses to `{}/orders`. This is the single most
+  // common way anyone writes a request, and requiring a leading slash missed
+  // every one of them — so the endpoint the codebase was calling most directly
+  // read as one it did not call at all.
+  if (/^\{\}\//.test(trimmed)) {
+    return /^\{\}\/[A-Za-z0-9\-._~%{}$:/]*$/.test(trimmed);
+  }
+
   if (!trimmed.startsWith('/')) return false;
   // `//` starts a comment or a protocol-relative URL; `/.../` is a regex.
   if (trimmed.startsWith('//')) return false;

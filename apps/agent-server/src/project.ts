@@ -27,7 +27,14 @@ import type { AgentConfig } from '@aica/schemas';
 import { defaultConfig, parseConfig } from '@aica/schemas';
 import type { ConfigIssue } from '@aica/schemas';
 import type { CommandRule } from '@aica/security-engine';
-import { CommandPolicy, PathPolicy, Redactor, SecretResolver } from '@aica/security-engine';
+import {
+  AuditLog,
+  CommandPolicy,
+  EgressLedger,
+  PathPolicy,
+  Redactor,
+  SecretResolver,
+} from '@aica/security-engine';
 import type { Id, Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, err, newId, ok, silentLogger } from '@aica/shared';
 import { ValidationPipeline } from '@aica/validation-engine';
@@ -88,6 +95,8 @@ export class ProjectSession {
   private postman: PostmanApiClient | undefined;
 
   private storeInstance: Store = new MemoryStore();
+  private auditLog: AuditLog | undefined;
+  private egressLedger: EgressLedger | undefined;
   private dependencyNames: readonly string[] = [];
   private index: CodeIndex | undefined;
   private graph: CodeGraph | undefined;
@@ -161,6 +170,31 @@ export class ProjectSession {
         new AgentError(ErrorCode.INVALID_INPUT, `Cannot open "${this.root}".`, { cause: error }),
       );
     }
+
+    // Built before anything can act, so the first decision is already
+    // recordable. The sink writes through to the store; a store that is down
+    // costs the entry, never the run.
+    this.auditLog = new AuditLog({
+      projectId: this.projectId,
+      redactor: this.redactorInstance,
+      logger: this.logger,
+      sink: (entry) => {
+        void this.storeInstance.recordAudit({
+          projectId: entry.projectId,
+          ...(entry.runId !== undefined ? { runId: entry.runId } : {}),
+          actor: entry.actor,
+          action: entry.action,
+          subject: entry.subject,
+          decision: entry.decision,
+          at: entry.at,
+        });
+      },
+    });
+
+    this.egressLedger = new EgressLedger({
+      logger: this.logger,
+      localOnly: this.config.privacy.localOnly,
+    });
 
     this.reader = new WorkspaceReader({
       pathPolicy: this.pathPolicy,
@@ -285,6 +319,18 @@ export class ProjectSession {
 
   get store(): Store {
     return this.storeInstance;
+  }
+
+  /** The account of record for this project (§62). */
+  get audit(): AuditLog {
+    if (!this.auditLog) throw new Error('ProjectSession.open() has not been called.');
+    return this.auditLog;
+  }
+
+  /** What has left the machine on this project's behalf (§7). */
+  get egress(): EgressLedger {
+    if (!this.egressLedger) throw new Error('ProjectSession.open() has not been called.');
+    return this.egressLedger;
   }
 
   /**

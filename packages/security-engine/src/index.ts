@@ -5,3 +5,5 @@ export * from './paths.js';
 export * from './commands.js';
 export * from './ssrf.js';
 export * from './secrets.js';
+export * from './audit.js';
+export * from './egress.js';

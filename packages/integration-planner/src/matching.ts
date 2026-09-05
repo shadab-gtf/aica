@@ -159,6 +159,13 @@ export function literalSignature(value: string): string {
   const absolute = /^https?:\/\/[^/]*(\/.*)?$/i.exec(path);
   if (absolute) path = absolute[1] ?? '/';
 
+  // A leading interpolation before the first slash is the base URL, not part of
+  // the path: `` `${BASE_URL}/orders` `` is recorded as `{}/orders`, and that is
+  // the single most common way anyone writes a request. Without this the
+  // signature is `{}/orders`, which matches no documented path at all — so
+  // every such call site reads as an endpoint the codebase does not call.
+  path = path.replace(/^\{\}(?=\/)/, '');
+
   // `/orders{}` is `/orders` plus an interpolated query or suffix.
   path = path.replace(/(?<=[^/]){}$/, '');
 

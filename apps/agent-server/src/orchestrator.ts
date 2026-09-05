@@ -28,8 +28,17 @@ import { McpRegistry } from '@aica/mcp-engine';
 import { SkillRegistry, renderSkills, resolveShippedSkillsDirectory } from '@aica/skill-engine';
 import type { SelectionResult } from '@aica/skill-engine';
 import type { EventBus, Id, Logger, Result } from '@aica/shared';
-import { AgentError, ErrorCode, RunEmitter, err, newId, ok, silentLogger } from '@aica/shared';
-import { ApprovalGate } from '@aica/security-engine';
+import {
+  AgentError,
+  ErrorCode,
+  RunBudget,
+  RunEmitter,
+  err,
+  newId,
+  ok,
+  silentLogger,
+} from '@aica/shared';
+import { AuditAction, AuditDecision, ApprovalGate } from '@aica/security-engine';
 import type { ApprovalRequest, ApprovalResponse } from '@aica/security-engine';
 import { ToolDispatcher, ToolRegistry } from '@aica/tool-registry';
 import { diagnose, runRepairLoop } from '@aica/validation-engine';
@@ -57,6 +66,20 @@ export interface RunSummary {
   readonly filesChanged: readonly string[];
   readonly validationPassed?: boolean;
   readonly stoppedBecause: string;
+  /** What the run consumed, and what left the machine. */
+  readonly usage: {
+    readonly iterations: number;
+    readonly toolCalls: number;
+    readonly elapsedMs: number;
+    readonly tokens: number;
+    readonly costUsd: number;
+  };
+  readonly egress: readonly {
+    readonly host: string;
+    readonly requests: number;
+    readonly blocked: number;
+    readonly requestBytes: number;
+  }[];
 }
 
 export interface OrchestratorOptions {
@@ -85,6 +108,7 @@ export class Orchestrator {
   private readonly running = new Map<string, AbortController>();
   private mcp: McpRegistry | undefined;
   private skills: SkillRegistry | undefined;
+  private readonly budgets = new Map<string, RunBudget>();
 
   constructor(private readonly options: OrchestratorOptions) {
     this.logger = (options.logger ?? silentLogger).child('run');
@@ -128,6 +152,18 @@ export class Orchestrator {
     const store = session.store;
     const startedAt = new Date().toISOString();
 
+    const budget = new RunBudget(session.configuration.limits);
+    this.budgets.set(runId, budget);
+
+    session.audit.record({
+      actor: 'user',
+      action: AuditAction.configLoaded,
+      subject: request.task,
+      decision: AuditDecision.allowed,
+      runId,
+      reason: `Run started with ${provider.value.id}/${provider.value.model}.`,
+    });
+
     const recorded = await store.startRun({
       id: runId,
       projectId: session.projectId,
@@ -164,6 +200,7 @@ export class Orchestrator {
       return await this.execute({ runId, request, provider: provider.value, emitter, controller });
     } finally {
       unsubscribe();
+      this.budgets.delete(runId);
       this.running.delete(runId);
       this.options.bus.closeRun(runId);
       // Third-party processes do not outlive the run that needed them.
@@ -181,6 +218,8 @@ export class Orchestrator {
   }): Promise<Result<RunSummary>> {
     const session = this.options.session;
     const { runId, request, provider, emitter, controller } = context;
+
+    const budgetFor = this.budgets.get(runId) ?? new RunBudget(session.configuration.limits);
 
     const index = session.codeIndex;
     if (!index) {
@@ -270,6 +309,18 @@ export class Orchestrator {
           detail: approval.reason,
         }),
       onResolved: (approval, response) => {
+        // A decline is recorded exactly as carefully as a grant: what was
+        // *attempted* is usually the interesting half.
+        session.audit.record({
+          actor: 'user',
+          action: AuditAction.approval,
+          subject: approval.action.subject,
+          decision: response.granted ? AuditDecision.approved : AuditDecision.declined,
+          risk: approval.action.risk,
+          runId,
+          reason: approval.reason,
+        });
+
         emitter.emit('APPROVAL_RESOLVED', {
           approvalId: approval.id,
           granted: response.granted,
@@ -301,6 +352,18 @@ export class Orchestrator {
           argsPreview: record.argsPreview,
         }),
       onComplete: (record) => {
+        this.budgets.get(runId)?.countToolCall(record.ok);
+
+        session.audit.record({
+          actor: 'agent',
+          action: AuditAction.toolCall,
+          subject: record.subject || record.tool,
+          decision: record.ok ? AuditDecision.succeeded : AuditDecision.failed,
+          risk: record.risk,
+          runId,
+          ...(record.error ? { reason: record.error.message } : {}),
+        });
+
         emitter.emit('TOOL_COMPLETED', {
           callId: record.callId,
           tool: record.tool,
@@ -391,6 +454,31 @@ export class Orchestrator {
     }
 
     const filesChanged = this.patches.changedFiles();
+    budgetFor.countFiles(filesChanged);
+    budgetFor.countUsage({
+      inputTokens: outcome.value.usage.inputTokens ?? 0,
+      outputTokens: outcome.value.usage.outputTokens ?? 0,
+      ...(outcome.value.usage.costUsd !== undefined
+        ? { costUsd: outcome.value.usage.costUsd }
+        : {}),
+    });
+
+    const remaining = budgetFor.check();
+    if (!remaining.ok) {
+      // Not a failure. The run did as much as it was allowed to, and saying
+      // which limit stopped it is what lets someone raise it and continue.
+      session.audit.record({
+        actor: 'agent',
+        action: AuditAction.limitExceeded,
+        subject: remaining.limit,
+        decision: AuditDecision.denied,
+        runId,
+        reason: remaining.reason,
+      });
+      emitter.emit('STATUS', { message: remaining.reason });
+    }
+
+    const spent = session.egress.summarize(runId);
 
     emitter.emit('AGENT_COMPLETED', {
       summary: outcome.value.summary,
@@ -419,7 +507,20 @@ export class Orchestrator {
       patchesApplied: this.patches.appliedCount,
       filesChanged,
       ...(validationPassed !== undefined ? { validationPassed } : {}),
-      stoppedBecause: outcome.value.stoppedBecause,
+      stoppedBecause: remaining.ok ? outcome.value.stoppedBecause : remaining.limit,
+      usage: {
+        iterations: budgetFor.usage.iterations,
+        toolCalls: budgetFor.usage.toolCalls,
+        elapsedMs: budgetFor.usage.elapsedMs,
+        tokens: budgetFor.usage.tokens,
+        costUsd: budgetFor.usage.costUsd,
+      },
+      egress: spent.map((entry) => ({
+        host: entry.host,
+        requests: entry.requests,
+        blocked: entry.blocked,
+        requestBytes: entry.requestBytes,
+      })),
     });
   }
 

@@ -337,6 +337,25 @@ describe('URL literals', () => {
     expect(result.urlLiterals[0]).toMatchObject({ value: '/orders/{}', interpolated: true });
   });
 
+  it('records a template that begins with an interpolated base URL', () => {
+    // `` `${BASE_URL}/orders` `` is the single most common way anyone writes a
+    // request. Requiring a leading slash missed every one of them, so the
+    // endpoint a codebase called most directly read as one it never called.
+    const result = analyze(
+      [
+        "import { BASE_URL } from './config.js';",
+        'export const list = () => fetch(`${BASE_URL}/orders`);',
+      ].join('\n'),
+    );
+
+    expect(result.urlLiterals.map((literal) => literal.value)).toContain('{}/orders');
+  });
+
+  it('does not mistake an interpolated non-path for a URL', () => {
+    const result = analyze('export const label = (name: string) => `${name} is here`;');
+    expect(result.urlLiterals).toHaveLength(0);
+  });
+
   it('records a plain path and an absolute URL', () => {
     const result = analyze(`
       export const BASE = 'https://api.example.com/v1';

@@ -18,9 +18,10 @@ import type { AIProvider } from '@aica/agent-core';
 import { retrieve } from '@aica/code-intelligence';
 import { analyzeImpact } from '@aica/code-graph';
 import { makePatch } from '@aica/fs-engine';
+import type { AuditEntry } from '@aica/security-engine';
 import { buildPlan, matchEndpoint, parseIntent, renderBrief } from '@aica/integration-planner';
 import type { RpcConnection } from '@aica/rpc';
-import type { ProjectSummary } from '@aica/schemas';
+import type { AuditEntrySummary, ProjectSummary } from '@aica/schemas';
 import { PROTOCOL_VERSION, clientMethods, serverMethods } from '@aica/schemas';
 import type { AgentEvent, Id, Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, EventBus, err, ok, silentLogger } from '@aica/shared';
@@ -367,6 +368,8 @@ export class AgentServer {
           ? { validationPassed: summary.value.validationPassed }
           : {}),
         stoppedBecause: summary.value.stoppedBecause,
+        usage: { ...summary.value.usage },
+        egress: summary.value.egress.map((entry) => ({ ...entry })),
       });
     });
 
@@ -534,6 +537,60 @@ export class AgentServer {
       });
     });
 
+    g.register(clientMethods.observability, async (params) => {
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+      const project = session.value;
+
+      const runs = await project.store.listRuns(params.projectId, { limit: 500 });
+      const rows = runs.ok ? runs.value : [];
+      const audit = project.audit;
+
+      return ok({
+        runs: {
+          total: rows.length,
+          completed: rows.filter((run) => run.status === 'completed').length,
+          failed: rows.filter((run) => run.status === 'failed').length,
+          cancelled: rows.filter((run) => run.status === 'cancelled').length,
+          filesChanged: rows.reduce((total, run) => total + run.filesChanged, 0),
+          // Runs that changed something *and* passed. A run that wrote nothing
+          // had nothing to validate, and counting it here would inflate the one
+          // number a reader is most likely to trust.
+          validated: rows.filter((run) => run.filesChanged > 0 && run.validationPassed === true)
+            .length,
+        },
+        audit: {
+          entries: audit.all.length,
+          refusals: audit.refusals.length,
+          recentRefusals: audit.refusals.slice(-20).reverse().map(toAuditSummary),
+        },
+        egress: {
+          localOnly: project.egress.localOnly,
+          blocked: project.egress.blockedCount,
+          byHost: project.egress.summarize().map((entry) => ({
+            host: entry.host,
+            kind: entry.kind,
+            requests: entry.requests,
+            blocked: entry.blocked,
+            requestBytes: entry.requestBytes,
+            responseBytes: entry.responseBytes,
+          })),
+        },
+      });
+    });
+
+    g.register(clientMethods.auditTrail, async (params) => {
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+
+      const audit = session.value.audit;
+      const entries = params.refusalsOnly
+        ? audit.refusals
+        : audit.query({ ...(params.runId ? { runId: params.runId } : {}) });
+
+      return ok({ entries: entries.slice(-params.limit).map(toAuditSummary) });
+    });
+
     g.register(clientMethods.discardPatch, async (params) => {
       const staged = this.stagedPatch(params.projectId, params.patchId);
       if (!staged.ok) return staged;
@@ -689,6 +746,20 @@ export class AgentServer {
   get openProjects(): readonly ProjectSession[] {
     return [...this.projects.values()];
   }
+}
+
+function toAuditSummary(entry: AuditEntry): AuditEntrySummary {
+  return {
+    id: entry.id,
+    at: entry.at,
+    ...(entry.runId !== undefined ? { runId: entry.runId } : {}),
+    actor: entry.actor,
+    action: entry.action,
+    subject: entry.subject,
+    decision: entry.decision,
+    ...(entry.risk !== undefined ? { risk: entry.risk } : {}),
+    ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
+  };
 }
 
 function toProjectSummary(session: ProjectSession): ProjectSummary {
