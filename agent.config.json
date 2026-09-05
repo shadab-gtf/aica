@@ -3,5 +3,12 @@
     "enabled": true,
     "url": "http://127.0.0.1:54321",
     "serviceKeyRef": "env:SUPABASE_SECRET_KEY"
+  },
+  "postman": {
+    "apiKeyRef": "keychain:postman"
+  },
+  "model": {
+    "provider": "openrouter",
+    "model": "anthropic/claude-sonnet-4.5"
   }
 }

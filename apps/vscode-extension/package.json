@@ -2,7 +2,7 @@
   "name": "aica-vscode",
   "displayName": "AICA — API Integration & Code Intelligence",
   "description": "Import an API, index the codebase, plan the integration, and validate the result.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "ShadabChoudhary",
   "license": "MIT",
   "engines": {
