@@ -42,7 +42,7 @@ setx OPENROUTER_API_KEY "sk-or-v1-..."     # then restart VS Code
 or point the server at a file you chose:
 
 ```
-setx AICA_ENV_FILE "C:\path	oica.env"
+setx AICA_ENV_FILE "C:\path\to\aica.env"
 ```
 
 A variable already set in the real environment wins over the file, so one value can be overridden

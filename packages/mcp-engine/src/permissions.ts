@@ -41,8 +41,8 @@ export interface McpToolPolicy {
 /**
  * Words in a tool's name that suggest it changes something.
  *
- * Matched against *tokens*, not with a word-boundary regular expression. ``
- * treats `_` as a word character, so `delete` does not match
+ * Matched against *tokens*, not with a word-boundary regular expression. A
+ * word boundary treats `_` as a word character, so `delete` does not match
  * `delete_everything` — and snake_case is the naming convention MCP tools
  * actually use, which would have made this whole heuristic close to useless
  * against real servers while looking correct in a test with a spaced name.

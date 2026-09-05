@@ -274,7 +274,7 @@ describe('classifying an MCP tool', () => {
   });
 
   it('reads a name whichever convention the server used', () => {
-    // `` treats `_` as a word character, so a word-boundary pattern misses
+    // A word boundary treats `_` as a word character, so such a pattern misses
     // `delete_file` entirely — and snake_case is what MCP tools are actually
     // named. All three conventions have to reach the same verdict.
     for (const name of ['delete_file', 'deleteFile', 'delete-file', 'Delete File']) {

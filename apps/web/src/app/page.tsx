@@ -68,11 +68,15 @@ export default async function OverviewPage() {
     return (
       <>
         <h1>Overview</h1>
-        <Notice title="No project is open.">
-          {lookup.state === 'unreachable'
-            ? lookup.message
-            : 'Open a folder in the VS Code extension and it will appear here.'}
-        </Notice>
+        <div className="empty-state">
+          <div style={{ fontSize: 48, marginBottom: 16 }}>▲</div>
+          <h3>No project is open</h3>
+          <p>
+            {lookup.state === 'unreachable'
+              ? lookup.message
+              : 'Open a folder in the AICA VS Code extension to connect and analyze your workspace.'}
+          </p>
+        </div>
       </>
     );
   }

@@ -289,6 +289,21 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  packages/memory:
+    dependencies:
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/rpc:
     dependencies:
       '@aica/shared':

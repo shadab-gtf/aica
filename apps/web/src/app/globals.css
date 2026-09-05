@@ -1,38 +1,43 @@
-/*
- * A dense, quiet interface.
- *
- * This dashboard is read while something is happening in an editor beside it,
- * so the priorities are: nothing moves unless the underlying state moved, the
- * status of a thing is legible without hovering, and the colours mean one thing
- * each. Dark and light both come from the same tokens.
- */
-
+/* Vercel-inspired monochrome theme */
 :root {
   color-scheme: light dark;
 
   --bg: #ffffff;
-  --panel: #f6f7f9;
-  --border: #dfe3e8;
-  --text: #14171a;
-  --muted: #5c6570;
-  --accent: #0b62d6;
-  --ok: #1a7f45;
-  --warn: #a15c00;
-  --error: #c0322b;
+  --bg-subtle: #fafafa;
+  --panel: #ffffff;
+  --border: #eaeaea;
+  --border-hover: #cccccc;
+  --text: #171717;
+  --muted: #666666;
+  --accent: #000000;
+  --accent-foreground: #ffffff;
+  --ok: #0070f3;
+  --warn: #f5a623;
+  --error: #ee0000;
   --radius: 6px;
+  --sidebar-w: 240px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101317;
-    --panel: #171b21;
-    --border: #262c35;
-    --text: #e6e9ed;
-    --muted: #8b95a1;
-    --accent: #62a8ff;
-    --ok: #4fc27f;
-    --warn: #e0a458;
-    --error: #ef6b63;
+    --bg: #000000;
+    --bg-subtle: #0a0a0a;
+    --panel: #000000;
+    --border: #333333;
+    --border-hover: #444444;
+    --text: #ededed;
+    --muted: #a1a1aa;
+    --accent: #ffffff;
+    --accent-foreground: #000000;
+    --ok: #3291ff;
+    --warn: #f5a623;
+    --error: #ff1a1a;
+
+    --shadow-sm: 0 1px 2px rgba(255, 255, 255, 0.02);
+    --shadow-md: 0 4px 6px -1px rgba(255, 255, 255, 0.04), 0 2px 4px -1px rgba(255, 255, 255, 0.02);
   }
 }
 
@@ -46,96 +51,192 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font:
-    14px/1.5 ui-sans-serif,
+  font-family:
+    var(--font-inter),
     system-ui,
     -apple-system,
-    'Segoe UI',
     sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 code,
 pre,
 .mono {
   font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
-  font-size: 0.92em;
+  font-size: 0.85em;
 }
 
-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 24px 20px 64px;
+/* Layout */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
 }
 
-nav.top {
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-subtle);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
-nav.top .inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 20px;
+.brand {
   display: flex;
   align-items: center;
-  gap: 20px;
-  height: 48px;
-}
-
-nav.top .brand {
+  gap: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 16px;
+  padding: 0 12px;
+  letter-spacing: -0.02em;
 }
 
-nav.top a {
+.brand-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-link {
   color: var(--muted);
   text-decoration: none;
-  padding: 4px 0;
-  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
-nav.top a:hover {
+.nav-link:hover {
   color: var(--text);
+  background: var(--border);
+}
+
+.content {
+  flex: 1;
+  padding: 48px;
+  max-width: 1000px;
 }
 
 h1 {
-  font-size: 20px;
-  margin: 0 0 4px;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  margin: 0 0 8px;
 }
 
 h2 {
-  font-size: 15px;
-  margin: 28px 0 10px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 40px 0 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
 }
 
 p.lede {
   color: var(--muted);
-  margin: 0 0 20px;
+  margin: 0 0 32px;
+  font-size: 15px;
 }
 
 .panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 14px 16px;
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.panel:hover {
+  border-color: var(--border-hover);
 }
 
 .grid {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .stat .value {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
 }
 
 .stat .label {
   color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Notice Component */
+.notice {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin: 0 0 24px;
+  background: var(--bg-subtle);
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.notice::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--warn);
+}
+
+.notice.error::before {
+  background: var(--error);
+}
+
+.notice.info::before {
+  background: var(--ok);
+}
+
+.notice strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.notice-content {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 table {
@@ -146,79 +247,87 @@ table {
 th,
 td {
   text-align: left;
-  padding: 8px 10px;
+  padding: 12px;
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
 }
 
 th {
   color: var(--muted);
   font-weight: 500;
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .badge {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   font-size: 12px;
+  font-weight: 500;
   color: var(--muted);
+  background: var(--bg-subtle);
 }
 
 .badge.ok {
   color: var(--ok);
-  border-color: currentColor;
+  border-color: rgba(0, 112, 243, 0.3);
+  background: rgba(0, 112, 243, 0.05);
 }
 
 .badge.warn {
   color: var(--warn);
-  border-color: currentColor;
+  border-color: rgba(245, 166, 35, 0.3);
+  background: rgba(245, 166, 35, 0.05);
 }
 
 .badge.error {
   color: var(--error);
-  border-color: currentColor;
+  border-color: rgba(238, 0, 0, 0.3);
+  background: rgba(238, 0, 0, 0.05);
 }
 
-.method {
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.03em;
-}
-
-.empty {
-  color: var(--muted);
-  padding: 20px 0;
-}
-
-.notice {
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--warn);
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  text-align: center;
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border);
   border-radius: var(--radius);
-  padding: 12px 14px;
-  margin: 0 0 20px;
-  background: var(--panel);
+  color: var(--muted);
 }
 
-.notice.error {
-  border-left-color: var(--error);
+.empty-state h3 {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px;
 }
 
+.empty-state p {
+  margin: 0 0 24px;
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+/* Timeline */
 .timeline {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 460px;
   overflow-y: auto;
+  background: var(--bg-subtle);
 }
 
 .timeline .row {
   display: flex;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
+  font-size: 13px;
 }
 
 .timeline .row:last-child {
@@ -229,22 +338,21 @@ th {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   min-width: 2.6em;
-  text-align: right;
 }
 
 .timeline .type {
-  color: var(--muted);
+  color: var(--text);
+  font-weight: 500;
   min-width: 12em;
 }
 
 .timeline .row.error .detail {
   color: var(--error);
 }
-
 .timeline .row.success .detail {
   color: var(--ok);
 }
-
 .detail {
   overflow-wrap: anywhere;
+  color: var(--muted);
 }

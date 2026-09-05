@@ -53,6 +53,9 @@
       "path": "packages/skill-engine/tsconfig.build.json"
     },
     {
+      "path": "packages/memory/tsconfig.build.json"
+    },
+    {
       "path": "packages/agent-core/tsconfig.build.json"
     },
     {

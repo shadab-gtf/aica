@@ -23,9 +23,10 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
 
+  const isDev = process.env.NODE_ENV !== 'production';
   const policy = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     // Styles stay `unsafe-inline`: React writes inline `style` attributes, and
     // a nonce cannot cover an attribute. The exposure is a page that can be
     // restyled, not one that can be scripted.
