@@ -28,13 +28,53 @@ import { createLogger, parseLogLevel } from '@aica/shared';
 import { HttpGateway } from './http.js';
 import { AgentServer } from './server.js';
 
+/**
+ * Load an environment file, if one was named.
+ *
+ * Only when `AICA_ENV_FILE` points at it. Deliberately *not* the `.env` sitting
+ * in whatever directory this process happens to start in — that directory is
+ * the project being analysed, and quietly pulling a user's project secrets into
+ * this process's environment is not a convenience, it is a surprise.
+ *
+ * Named explicitly, it is exactly the convenience it looks like. Node reads it
+ * natively, so this costs no dependency, and it does not overwrite a variable
+ * that is already set — so a real environment variable beats the file, which is
+ * the precedence anyone debugging one would assume.
+ *
+ * A missing or malformed file is reported and ignored: a server that refuses to
+ * start because an optional file is absent is worse than one that starts
+ * without the variables it would have set, because the second failure names the
+ * variable that is missing.
+ *
+ * Returns a problem rather than logging one, because this has to run *before*
+ * the logger exists — the file is allowed to set `AICA_LOG_LEVEL`, and a logger
+ * built first would have already read the old value.
+ */
+function loadEnvFile(): { file: string; reason: string } | undefined {
+  const file = process.env['AICA_ENV_FILE'];
+  if (!file) return undefined;
+
+  try {
+    process.loadEnvFile(file);
+    return undefined;
+  } catch (error) {
+    return { file, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function main(): Promise<void> {
+  // First, so that a file naming `AICA_LOG_LEVEL` sets the level it is then
+  // reported at. A logger built beforehand would already have read the old one.
+  const envProblem = loadEnvFile();
+
   const logger = createLogger({
     level: parseLogLevel(process.env['AICA_LOG_LEVEL']) ?? 'info',
     sink: (record) => {
       process.stderr.write(`${JSON.stringify(record)}\n`);
     },
   });
+
+  if (envProblem) logger.warn('AICA_ENV_FILE could not be read', { ...envProblem });
 
   const transport = streamTransport(process.stdin, process.stdout);
   const connection = new RpcConnection({ transport, logger });

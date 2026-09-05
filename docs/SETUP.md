@@ -22,6 +22,33 @@ A key is never written into `agent.config.json`. Configuration holds a _referenc
 `env:NAME`, `keychain:NAME`, `file:path`, or `prompt:NAME` — and a literal credential there is a
 validation failure rather than a leak.
 
+## Which file do I edit?
+
+Two, and they do different jobs.
+
+| File                | Holds                                   |
+| ------------------- | --------------------------------------- |
+| the environment     | the key values themselves               |
+| `agent.config.json` | which reference to resolve, per project |
+
+**`.env` is not loaded automatically.** A file sitting in the directory the server starts in is
+the _analysed project's_ `.env`, and a tool that quietly pulls the secrets of the codebase it is
+inspecting into its own process is not a convenience. Two ways to make a value real:
+
+```
+setx OPENROUTER_API_KEY "sk-or-v1-..."     # then restart VS Code
+```
+
+or point the server at a file you chose:
+
+```
+setx AICA_ENV_FILE "C:\path	oica.env"
+```
+
+A variable already set in the real environment wins over the file, so one value can be overridden
+without editing anything. Copy `.env.example` as a starting point — it lists every name the code
+actually reads.
+
 ## The model (OpenRouter)
 
 ```
