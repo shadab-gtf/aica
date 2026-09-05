@@ -80,7 +80,7 @@ server decides. No security decision is made in a UI, because a UI can be bypass
 apps/
   vscode-extension/   VS Code UI: sidebar, chat, diff review, CodeLens, diagnostics, commands
   web/                Next.js control dashboard: projects, API catalog, graph, runs, MCP, skills
-  agent-server/       Local process: gateway, orchestrator, SQLite, event bus
+  agent-server/       Local process: gateway, orchestrator, run loop, Postgres store, event bus
 
 packages/
   shared/             Result/error types, IDs, event contracts, logger, clock. Zero deps.
@@ -195,15 +195,38 @@ context, unambiguous phrasing) and consults the model only for genuinely ambiguo
 whether an existing client was found, whether types align — and escalates to the user at LOW.
 Confidence is derived, never asserted by the model.
 
-## 6. Data model (SQLite)
+## 6. Data model (Postgres, via a local Supabase stack)
 
 Owned exclusively by the server. Projects are hard-isolated (§48): every row is keyed by
 `project_id` and every query is scoped by it, so no cross-project context leak is possible.
 
-Principal tables: `projects`, `files`, `symbols`, `references`, `graph_edges`, `apis`,
-`endpoints`, `schemas`, `integrations`, `runs`, `run_events`, `tool_calls`, `findings`,
-`memory_entries`, `mcp_servers`, `mcp_tools`, `approvals`, `audit_log`. Full-text search over
-symbol names, endpoint paths/descriptions, and documentation uses SQLite FTS5.
+Principal tables: `projects`, `files`, `symbols`, `refs`, `graph_edges`, `apis`, `endpoints`,
+`api_schemas`, `integrations`, `runs`, `run_events`, `tool_calls`, `findings`, `memory_entries`,
+`mcp_servers`, `mcp_tools`, `approvals`, `audit_log`. Full-text search over symbol names and
+endpoint paths/summaries uses Postgres `tsvector` with GIN indexes.
+
+**Local, and that is a security property.** The stack runs on loopback (`supabase start`), so an
+index of a private codebase does not leave the machine. Pointing this at a hosted project is
+possible and deliberate: it takes editing `database.url` and supplying a key reference.
+
+**Optional.** Disabled by default. With no database the server keeps everything in memory and
+loses it on restart; nothing else changes. Indexing a repository must never require Docker to be
+running, so a store that is unreachable degrades to "no history" and is reported as a
+configuration issue, not as a failure to work.
+
+**Metadata only, never file contents.** Paths, symbol names, kinds, signatures, and graph edges
+are stored. Source text, doc comments, snippets, prompts, and model output are not — they are
+read from disk on demand, where the path policy still governs them. The schema has no column to
+put them in and a test asserts that it never gains one.
+
+**The code index is a projection, not a source of truth.** §2 puts AST facts above stored state,
+so the in-memory index is always re-derived from source rather than restored from the database.
+The API catalog is the exception and is durable: a collection fetched over the network should not
+have to be fetched again after a restart.
+
+**Row-level security is on everywhere, with no policies.** The server connects with the service
+role, which bypasses RLS; every other key — including the anon key a browser would hold — reads
+nothing. If this schema is ever pointed at a hosted project, the default is "no access".
 
 Secrets are never stored. Secret _references_ (e.g. `env:PAYMENT_API_KEY`) are.
 
@@ -470,3 +493,26 @@ Full detail in `CODING-AGENTS.md`.
   time. Nothing in the server's own source uses `import.meta`, so the conversion
   costs nothing. This supersedes the ESM half of the bundling decision recorded
   above.
+
+### 9.9 Runs, patches, and persistence (post-Phase 6)
+
+- **A run plans deterministically before the model sees anything.** The integration planner reads
+  the index and the catalog and produces a brief; the model is handed that, not the user's
+  sentence. Constraints, protected files, and open questions are in front of it before it writes.
+- **Proposing and writing are different tools.** `propose_patch` computes a preview and stages it
+  and touches nothing; `apply_patch` writes, transactionally, and is the only tool that does. An
+  agent that could only write would make review a formality performed after the fact.
+- **The agent only gets `apply_patch` in modes that permit it to write** — `auto` and
+  `askOnDestructive`. In every other mode it proposes and a person applies, because a yes/no
+  approval prompt with no diff attached is not a review.
+- **A proposal is never written to disk to be reviewed.** It is served from memory as a virtual
+  document. A proposed change written to the working tree has already happened, whatever the UI
+  says next: a build watcher picks it up and a test runner sees it.
+- **A revert restores captured content, not an inverted diff.** The before-text of every file is
+  recorded at apply time, so restoring is exact rather than a second guess at what was there.
+- **Validation runs on what was written, and only on what was written.** A run that applied
+  nothing has nothing to validate, and reports that rather than a pass. §39's repair loop owns the
+  budget and the progress rule; the model performs an attempt and the pipeline judges it.
+- **Persistence never fails a run.** Writes return `Result`, callers log and continue, and the
+  store is chosen at open time with a health check so a missing database is a configuration issue
+  surfaced once — not a failure discovered halfway through a run.

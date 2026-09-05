@@ -201,6 +201,89 @@ export const postmanCollectionSchema = z.object({
   updatedAt: z.string().optional(),
 });
 
+/**
+ * The envelope every event travels in.
+ *
+ * `payload` is `unknown` on purpose — see the note at the top of this file. The
+ * envelope is validated because ordering and correlation depend on it; the
+ * payload is narrowed by the consumer against `shared`'s event union.
+ */
+export const eventNotificationSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  projectId: z.string(),
+  seq: z.number().int().nonnegative(),
+  at: z.string(),
+  type: z.string(),
+  payload: z.unknown(),
+});
+
+export const runSummarySchema = z.object({
+  runId: z.string(),
+  summary: z.string(),
+  iterations: z.number(),
+  toolCalls: z.number(),
+  patchesProposed: z.number(),
+  patchesApplied: z.number(),
+  filesChanged: z.array(z.string()),
+  /**
+   * Absent when nothing was written. "Nothing to validate" and "validation
+   * passed" are different outcomes and the UI has to be able to tell them
+   * apart.
+   */
+  validationPassed: z.boolean().optional(),
+  stoppedBecause: z.string(),
+});
+
+export const patchSummarySchema = z.object({
+  patchId: z.string(),
+  rationale: z.string(),
+  status: z.enum(['proposed', 'applied', 'reverted', 'discarded']),
+  proposedAt: z.number(),
+  files: z.array(
+    z.object({
+      path: z.string(),
+      kind: z.enum(['created', 'modified', 'deleted']),
+      linesAdded: z.number(),
+      linesRemoved: z.number(),
+    }),
+  ),
+});
+
+/**
+ * A patch with both sides of every file.
+ *
+ * The only shape in this protocol that carries file contents, and it is asked
+ * for by exactly one caller: the editor, which cannot render a diff view
+ * without them. It is never part of an event, a run record, or a log line.
+ */
+export const patchContentSchema = z.object({
+  patchId: z.string(),
+  rationale: z.string(),
+  diff: z.string(),
+  files: z.array(
+    z.object({
+      path: z.string(),
+      before: z.string().optional(),
+      after: z.string().optional(),
+    }),
+  ),
+});
+
+export const runRecordSchema = z.object({
+  id: z.string(),
+  task: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  status: z.enum(['running', 'completed', 'failed', 'cancelled']),
+  startedAt: z.string(),
+  finishedAt: z.string().optional(),
+  summary: z.string().optional(),
+  toolCalls: z.number(),
+  filesChanged: z.number(),
+  validationPassed: z.boolean().optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Method contracts
 // ---------------------------------------------------------------------------
@@ -337,10 +420,66 @@ export const clientMethods = {
     impactSummarySchema,
   ),
 
+  /**
+   * Start a run.
+   *
+   * Long by nature — it plans, calls a model, edits, validates and repairs — so
+   * progress arrives as events on the notification channel and this resolves
+   * only at the end. A client that wants to stop it sends `run/cancel`, or
+   * cancels the request itself; both reach the same abort signal.
+   */
+  startRun: method(
+    'run/start',
+    projectIdParam.extend({ task: z.string().min(1), apiId: z.string().optional() }),
+    runSummarySchema,
+  ),
+
   cancelRun: method(
     'run/cancel',
     z.object({ runId: z.string().min(1) }),
     z.object({ cancelled: z.boolean() }),
+  ),
+
+  listRuns: method(
+    'run/list',
+    projectIdParam.extend({ limit: z.number().int().positive().max(200).default(25) }),
+    z.object({ runs: z.array(runRecordSchema) }),
+  ),
+
+  listRunEvents: method(
+    'run/events',
+    z.object({ runId: z.string().min(1), sinceSeq: z.number().int().nonnegative().default(0) }),
+    z.object({ events: z.array(eventNotificationSchema) }),
+  ),
+
+  listPatches: method(
+    'patch/list',
+    projectIdParam,
+    z.object({ patches: z.array(patchSummarySchema) }),
+  ),
+
+  previewPatch: method(
+    'patch/preview',
+    projectIdParam.extend({ patchId: z.string().min(1) }),
+    patchContentSchema,
+  ),
+
+  applyPatch: method(
+    'patch/apply',
+    projectIdParam.extend({ patchId: z.string().min(1) }),
+    z.object({ patchId: z.string(), files: z.array(z.string()) }),
+  ),
+
+  revertPatch: method(
+    'patch/revert',
+    projectIdParam.extend({ patchId: z.string().min(1) }),
+    z.object({ patchId: z.string(), files: z.array(z.string()) }),
+  ),
+
+  discardPatch: method(
+    'patch/discard',
+    projectIdParam.extend({ patchId: z.string().min(1) }),
+    z.object({ patchId: z.string(), discarded: z.boolean() }),
   ),
 } as const;
 
@@ -385,23 +524,6 @@ export const serverMethods = {
 export const NOTIFY_EVENT = 'agent/event';
 export const NOTIFY_LOG = 'agent/log';
 
-/**
- * The envelope every event travels in.
- *
- * `payload` is `unknown` on purpose — see the note at the top of this file. The
- * envelope is validated because ordering and correlation depend on it; the
- * payload is narrowed by the consumer against `shared`'s event union.
- */
-export const eventNotificationSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  projectId: z.string(),
-  seq: z.number().int().nonnegative(),
-  at: z.string(),
-  type: z.string(),
-  payload: z.unknown(),
-});
-
 export const logNotificationSchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']),
   message: z.string(),
@@ -419,6 +541,10 @@ export type ValidationFindingSummary = z.infer<typeof validationFindingSchema>;
 export type ImpactSummary = z.infer<typeof impactSummarySchema>;
 export type PostmanWorkspaceSummary = z.infer<typeof postmanWorkspaceSchema>;
 export type PostmanCollectionSummary = z.infer<typeof postmanCollectionSchema>;
+export type RunSummaryResult = z.infer<typeof runSummarySchema>;
+export type PatchSummary = z.infer<typeof patchSummarySchema>;
+export type PatchContent = z.infer<typeof patchContentSchema>;
+export type RunRecord = z.infer<typeof runRecordSchema>;
 export type EventNotification = z.infer<typeof eventNotificationSchema>;
 export type LogNotification = z.infer<typeof logNotificationSchema>;
 

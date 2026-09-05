@@ -156,6 +156,33 @@ export const postmanConfigSchema = z.object({
   requestTimeoutMs: z.number().int().positive().default(20_000),
 });
 
+/**
+ * Where run history and the code catalog are kept.
+ *
+ * Postgres, through a local Supabase stack, and local is a security property
+ * rather than a deployment preference: a symbol index is a map of a private
+ * codebase, and §7 forbids it leaving the machine by accident. The default URL
+ * is loopback. Pointing this at a hosted project is possible and deliberate —
+ * it takes editing `url` and supplying a key reference — which is the right
+ * amount of friction for a decision that changes where source metadata lives.
+ *
+ * Disabled by default. With no database the server keeps everything in memory
+ * and loses it on restart; nothing else changes. Indexing a repository must not
+ * require Docker to be running.
+ */
+export const databaseConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  url: z.string().url().default('http://127.0.0.1:54321'),
+  /**
+   * Service-role key, as a reference. The server bypasses row-level security,
+   * which is why the schema enables RLS everywhere with no policies: any other
+   * key can read nothing.
+   */
+  serviceKeyRef: secretReferenceSchema.optional(),
+  /** Rows per insert when writing an index projection. */
+  batchSize: z.number().int().positive().max(5000).default(500),
+});
+
 export const privacyConfigSchema = z.object({
   /** Paths never read into model context, beyond the built-in exclusions. */
   excludePaths: z.array(z.string()).default([]),
@@ -214,6 +241,7 @@ export const agentConfigSchema = z.object({
   permissions: permissionsConfigSchema.default({}),
   validation: validationConfigSchema.default({}),
   privacy: privacyConfigSchema.default({}),
+  database: databaseConfigSchema.default({}),
   mcpServers: z.array(mcpServerConfigSchema).default([]),
   codingAgent: codingAgentConfigSchema.default({}),
   apis: z.array(apiSourceConfigSchema).default([]),
@@ -236,6 +264,7 @@ export type CodingAgentConfig = z.infer<typeof codingAgentConfigSchema>;
 export type ApiSourceConfig = z.infer<typeof apiSourceConfigSchema>;
 export type PostmanConfig = z.infer<typeof postmanConfigSchema>;
 export type PrivacyConfig = z.infer<typeof privacyConfigSchema>;
+export type DatabaseConfig = z.infer<typeof databaseConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
 /** The configuration used when a project has none, favouring safety. */

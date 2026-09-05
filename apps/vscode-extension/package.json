@@ -51,6 +51,10 @@
           "name": "Validation"
         },
         {
+          "id": "aica.changes",
+          "name": "Proposed Changes"
+        },
+        {
           "id": "aica.timeline",
           "name": "Run Timeline"
         }
@@ -109,6 +113,36 @@
       {
         "command": "aica.showOutput",
         "title": "AICA: Show Agent Server Log"
+      },
+      {
+        "command": "aica.run",
+        "title": "AICA: Run a Task",
+        "icon": "$(play)"
+      },
+      {
+        "command": "aica.cancelRun",
+        "title": "AICA: Cancel the Running Task",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "aica.reviewChange",
+        "title": "AICA: Review Proposed Change",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "aica.applyChange",
+        "title": "AICA: Apply Proposed Change",
+        "icon": "$(check)"
+      },
+      {
+        "command": "aica.revertChange",
+        "title": "AICA: Revert Applied Change",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "aica.discardChange",
+        "title": "AICA: Discard Proposed Change",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -132,6 +166,11 @@
           "command": "aica.runValidation",
           "when": "view == aica.validation",
           "group": "navigation"
+        },
+        {
+          "command": "aica.run",
+          "when": "view == aica.changes",
+          "group": "navigation"
         }
       ],
       "editor/context": [
@@ -139,6 +178,28 @@
           "command": "aica.analyzeImpact",
           "when": "editorLangId =~ /typescript|typescriptreact|javascript|javascriptreact/",
           "group": "aica@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "aica.reviewChange",
+          "when": "view == aica.changes && viewItem == aica.patch.proposed",
+          "group": "inline@1"
+        },
+        {
+          "command": "aica.applyChange",
+          "when": "view == aica.changes && viewItem == aica.patch.proposed",
+          "group": "inline@2"
+        },
+        {
+          "command": "aica.discardChange",
+          "when": "view == aica.changes && viewItem == aica.patch.proposed",
+          "group": "inline@3"
+        },
+        {
+          "command": "aica.revertChange",
+          "when": "view == aica.changes && viewItem == aica.patch.applied",
+          "group": "inline@1"
         }
       ]
     },
@@ -171,6 +232,11 @@
           "type": "number",
           "default": 5000,
           "description": "Largest number of files indexed in one pass."
+        },
+        "aica.run.autoReviewOnPropose": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the diff automatically when the agent proposes a change. Off means the change waits in the Proposed Changes view."
         }
       }
     }

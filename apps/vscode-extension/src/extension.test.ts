@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { AgentServer } from '@aica/agent-server';
 import { RpcConnection, createTransportPair } from '@aica/rpc';
 import { clientMethods } from '@aica/schemas';
-import type { ValidationFindingSummary, ValidationSummary } from '@aica/schemas';
+import type {
+  PatchSummary,
+  RunRecord,
+  ValidationFindingSummary,
+  ValidationSummary,
+} from '@aica/schemas';
 import { ErrorCode, newId } from '@aica/shared';
 import type { AgentEvent } from '@aica/shared';
 import { describe, expect, it, vi } from 'vitest';
@@ -12,7 +17,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AgentClient } from './client.js';
 import { summarizeValidation, toDiagnostics } from './model/diagnostics.js';
 import { demandsAttention, statusBarText, toTimelineEntry } from './model/status.js';
-import { apiCatalogTree, flatten, planTree, validationTree } from './model/tree.js';
+import {
+  apiCatalogTree,
+  flatten,
+  patchTree,
+  planTree,
+  runTree,
+  validationTree,
+} from './model/tree.js';
 import { RestartPolicy, resolveServerEntry } from './serverProcess.js';
 
 const FIXTURE_ROOT = path.resolve(
@@ -336,6 +348,76 @@ describe('the validation tree', () => {
     });
 
     expect(nodes.find((node) => node.label === 'test')?.description).toBe('timed out');
+  });
+});
+
+describe('the proposed-changes tree', () => {
+  const patch = (overrides: Partial<PatchSummary> = {}) => ({
+    patchId: 'patch_1',
+    rationale: 'Add cancelOrder',
+    status: 'proposed' as const,
+    proposedAt: 1,
+    files: [{ path: 'src/client.ts', kind: 'modified' as const, linesAdded: 4, linesRemoved: 0 }],
+    ...overrides,
+  });
+
+  it('says nothing is waiting rather than rendering blank space', () => {
+    expect(patchTree([])[0]?.kind).toBe('placeholder');
+  });
+
+  it('says in words that a change is a proposal, not a fact', () => {
+    const nodes = patchTree([patch()]);
+    // The difference between "this is on disk" and "this is a suggestion" is
+    // the most consequential thing in the interface, and an icon is something a
+    // person has to have learned.
+    expect(nodes[0]?.description).toBe('1 file · awaiting review');
+  });
+
+  it('drives the context menu from the status', () => {
+    // Apply on something already written, and revert on a proposal, are absent
+    // rather than disabled.
+    expect(patchTree([patch()])[0]?.contextValue).toBe('aica.patch.proposed');
+    expect(patchTree([patch({ status: 'applied' })])[0]?.contextValue).toBe('aica.patch.applied');
+  });
+
+  it('shows each file with what would change in it', () => {
+    const file = flatten(patchTree([patch()])).find((node) => node.kind === 'patchFile');
+    expect(file?.label).toBe('src/client.ts');
+    expect(file?.description).toBe('modified · +4 −0');
+    expect(file?.location).toEqual({ file: 'src/client.ts' });
+  });
+});
+
+describe('the run history tree', () => {
+  const run = (overrides: Partial<RunRecord> = {}) => ({
+    id: 'run_1',
+    task: 'add a way to cancel an order',
+    provider: 'openrouter',
+    model: 'some/model',
+    status: 'completed' as const,
+    startedAt: new Date().toISOString(),
+    toolCalls: 4,
+    filesChanged: 1,
+    ...overrides,
+  });
+
+  it('distinguishes a validated run from an unvalidated one', () => {
+    expect(runTree([run({ validationPassed: true })])[0]?.description).toContain('validated');
+    expect(runTree([run({ validationPassed: false })])[0]?.description).toContain('not validated');
+  });
+
+  it('says a run that changed nothing changed nothing', () => {
+    // Reporting "validated" for a run that wrote nothing would be exactly the
+    // false reassurance the validation layer exists to prevent.
+    expect(runTree([run({ filesChanged: 0 })])[0]?.description).toContain('no changes');
+  });
+
+  it('marks a run whose validation state is unknown as unvalidated', () => {
+    expect(runTree([run()])[0]?.description).toContain('unvalidated');
+  });
+
+  it('shows a placeholder before anything has run', () => {
+    expect(runTree([])[0]?.kind).toBe('placeholder');
   });
 });
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ParseWarningCode,
+  isPublic,
   listEnums,
   resolvePath,
   successSchema,
@@ -423,6 +424,32 @@ describe('responses', () => {
 
 describe('security', () => {
   const spec = parse();
+
+  it('separates an absent security list from an explicitly empty one', () => {
+    // OpenAPI gives the empty list meaning: it is an override saying "this one
+    // needs nothing", not a silence. Collapsing the two made an endpoint the
+    // author had marked public inherit the global bearer requirement — a lock
+    // in the catalog, and a token attached to a request that must not carry
+    // one.
+    const parsed = unwrap(
+      parseOpenApi({
+        openapi: '3.0.3',
+        info: { title: 'Mixed', version: '1' },
+        components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } },
+        security: [{ bearerAuth: [] }],
+        paths: {
+          '/inherits': { get: { responses: { '200': { description: 'ok' } } } },
+          '/public': { get: { security: [], responses: { '200': { description: 'ok' } } } },
+        },
+      }),
+    );
+
+    const byPath = new Map(parsed.endpoints.map((endpoint) => [endpoint.path, endpoint]));
+
+    expect(byPath.get('/inherits')?.security).toEqual([]);
+    expect(byPath.get('/public')?.security).toEqual([[]]);
+    expect(isPublic(byPath.get('/public')?.security ?? [])).toBe(true);
+  });
 
   it('maps every scheme kind', () => {
     expect(spec.authSchemes).toEqual([

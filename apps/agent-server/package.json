@@ -16,6 +16,7 @@
     "start": "node ./dist/main.js"
   },
   "dependencies": {
+    "@aica/agent-core": "workspace:*",
     "@aica/api-engine": "workspace:*",
     "@aica/api-ir": "workspace:*",
     "@aica/code-graph": "workspace:*",
@@ -27,7 +28,9 @@
     "@aica/schemas": "workspace:*",
     "@aica/security-engine": "workspace:*",
     "@aica/shared": "workspace:*",
+    "@aica/tool-registry": "workspace:*",
     "@aica/validation-engine": "workspace:*",
+    "@supabase/supabase-js": "^2.115.0",
     "zod": "^3.25.76"
   }
 }

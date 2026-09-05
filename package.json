@@ -19,7 +19,12 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "gate": "pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test"
+    "gate": "pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:status": "supabase status",
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push --local"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
@@ -27,6 +32,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9.39.0",
     "prettier": "^3.6.2",
+    "supabase": "^2.116.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.0",
     "vitest": "^3.2.4"

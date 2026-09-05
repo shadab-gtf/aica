@@ -1,0 +1,53 @@
+# Local Supabase stack.
+#
+# Everything binds to loopback. That is the whole point of choosing local over
+# hosted: §7 forbids silent data egress, and a symbol index is a map of a
+# private codebase. Nothing here reaches a network the developer did not start.
+#
+# Only the services the server actually uses are enabled. Auth, storage,
+# realtime and the rest are off — an unused service is an open port and a
+# process to keep patched, not a free option.
+
+project_id = "aica"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+# A read that forgets its limit should be slow, not fatal.
+max_rows = 5000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.pooler]
+enabled = false
+
+[studio]
+# The table browser. Useful while developing; it is still loopback-only.
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbound_email]
+enabled = false
+
+[storage]
+enabled = false
+
+[auth]
+# The server connects with the service role and the schema enables row-level
+# security with no policies, so there is nothing for an auth service to grant.
+enabled = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false

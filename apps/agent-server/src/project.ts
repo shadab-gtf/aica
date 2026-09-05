@@ -21,7 +21,7 @@ import { buildGraph } from '@aica/code-graph';
 import type { CodeIndex } from '@aica/code-intelligence';
 import { Indexer } from '@aica/code-intelligence';
 import { CommandExecutor } from '@aica/exec-engine';
-import { WorkspaceReader } from '@aica/fs-engine';
+import { PatchEngine, WorkspaceReader } from '@aica/fs-engine';
 import type { IntegrationPlan } from '@aica/integration-planner';
 import type { AgentConfig } from '@aica/schemas';
 import { defaultConfig, parseConfig } from '@aica/schemas';
@@ -31,6 +31,9 @@ import { CommandPolicy, PathPolicy, Redactor, SecretResolver } from '@aica/secur
 import type { Id, Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, err, newId, ok, silentLogger } from '@aica/shared';
 import { ValidationPipeline } from '@aica/validation-engine';
+
+import type { Store } from './store/index.js';
+import { MemoryStore, SupabaseStore, toApiSnapshot, toIndexSnapshot } from './store/index.js';
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -84,6 +87,7 @@ export class ProjectSession {
   private secrets: SecretResolver | undefined;
   private postman: PostmanApiClient | undefined;
 
+  private storeInstance: Store = new MemoryStore();
   private index: CodeIndex | undefined;
   private graph: CodeGraph | undefined;
   private endpointIndex: EndpointIndex | undefined;
@@ -201,7 +205,83 @@ export class ProjectSession {
         : {}),
     });
 
+    await this.openStore();
+
+    const saved = await this.storeInstance.saveProject({
+      id: this.projectId,
+      name: this.name,
+      root: this.root,
+      fileCount: 0,
+      symbolCount: 0,
+      referenceCount: 0,
+      resolutionRate: 0,
+    });
+    if (!saved.ok)
+      this.logger.warn('could not record the project', { reason: saved.error.message });
+
     return ok(true);
+  }
+
+  /**
+   * Connect the store, or fall back to memory and say why.
+   *
+   * A database that is not running must never be the reason someone cannot
+   * index their code. The failure is recorded as a configuration issue — which
+   * the UI shows — and the session continues without history, because losing
+   * history is a much smaller loss than losing the ability to work.
+   */
+  private async openStore(): Promise<void> {
+    const database = this.config.database;
+    if (!database.enabled) return;
+
+    if (!database.serviceKeyRef) {
+      this.configIssues = [
+        ...this.configIssues,
+        {
+          path: 'database.serviceKeyRef',
+          message:
+            'The database is enabled but no service-role key reference is set. Running without history.',
+        },
+      ];
+      return;
+    }
+
+    const key = await this.requireSecrets().resolve(database.serviceKeyRef);
+    if (!key.ok) {
+      this.configIssues = [
+        ...this.configIssues,
+        {
+          path: 'database.serviceKeyRef',
+          message: `${key.error.message} Running without history.`,
+        },
+      ];
+      return;
+    }
+
+    const store = new SupabaseStore({
+      url: database.url,
+      serviceKey: key.value,
+      logger: this.logger,
+      batchSize: database.batchSize,
+    });
+
+    // Checked once, here, rather than discovered on the first write halfway
+    // through a run.
+    const healthy = await store.health();
+    if (!healthy.ok) {
+      this.configIssues = [
+        ...this.configIssues,
+        { path: 'database', message: `${healthy.error.message} Running without history.` },
+      ];
+      return;
+    }
+
+    this.storeInstance = store;
+    this.logger.info('connected to the database', { url: database.url });
+  }
+
+  get store(): Store {
+    return this.storeInstance;
   }
 
   get configuration(): AgentConfig {
@@ -260,6 +340,18 @@ export class ProjectSession {
     // rather than kept and patched — a stale graph is worse than no graph,
     // because it answers confidently.
     this.graph = buildGraph(built.value);
+
+    // Written as a projection, never read back. §2 puts AST facts above stored
+    // state, so the in-memory index is always re-derived from source; these
+    // rows exist to be queried, not to reconstitute anything.
+    const recorded = await this.storeInstance.replaceIndex(
+      this.projectId,
+      toIndexSnapshot(built.value, this.graph),
+    );
+    if (!recorded.ok) {
+      this.logger.warn('could not record the index', { reason: recorded.error.message });
+    }
+
     return ok(built.value);
   }
 
@@ -275,6 +367,14 @@ export class ProjectSession {
     this.apis.set(spec.id, stored);
     // The endpoint index spans the catalog, so adding a spec invalidates it.
     this.endpointIndex = undefined;
+
+    // Unlike the index this is durable: a collection fetched over the network
+    // should not have to be fetched again after a restart. Fire and forget —
+    // the catalog in memory is already correct.
+    void this.storeInstance.saveApi(this.projectId, toApiSnapshot(spec, format)).then((result) => {
+      if (!result.ok) this.logger.warn('could not record the API', { apiId: spec.id });
+    });
+
     return stored;
   }
 
@@ -333,6 +433,11 @@ export class ProjectSession {
       for (const stored of this.apis.values()) this.endpointIndex.add(stored.spec);
     }
     return this.endpointIndex;
+  }
+
+  /** A patch engine bound to this project's path policy. */
+  patchEngine(): PatchEngine {
+    return new PatchEngine({ pathPolicy: this.requirePathPolicy(), logger: this.logger });
   }
 
   validation(): ValidationPipeline {

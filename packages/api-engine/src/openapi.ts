@@ -478,10 +478,23 @@ class OpenApiParser {
   /**
    * A security list is alternatives; each entry ANDs its schemes. Both levels
    * are preserved — see `SecurityOption`.
+   *
+   * The empty case carries meaning and the two empties are not the same. An
+   * *absent* `security` key means "inherit whatever the specification says",
+   * and is represented as no options at all. A *present but empty* list —
+   * `security: []` — is the document explicitly saying this endpoint needs no
+   * authentication, which OpenAPI's own wording makes an override rather than a
+   * silence, and is represented as one option requiring nothing.
+   *
+   * Collapsing them was a real defect: an endpoint the author had deliberately
+   * marked public inherited the global bearer requirement, so the catalog
+   * showed a lock on it and a generated client would have attached a token to a
+   * request that must not carry one.
    */
   private parseSecurity(value: unknown, jsonPointer: string): SecurityOption[] {
     const alternatives = asArray(value);
     if (!alternatives) return [];
+    if (alternatives.length === 0) return [[]];
 
     return alternatives.map((alternative, index): SecurityOption => {
       const record = asRecord(alternative);

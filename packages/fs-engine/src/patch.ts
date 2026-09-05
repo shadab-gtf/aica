@@ -68,6 +68,22 @@ export interface PatchPreview {
   readonly diff: string;
 }
 
+/**
+ * The whole proposed content of one file, for a side-by-side review.
+ *
+ * Separate from `PatchPreview` on purpose. A summary and a diff travel
+ * everywhere — into events, into logs, into a run record — and file contents
+ * must not go with them. This is asked for explicitly, by the one caller that
+ * needs it: the editor, which cannot render a diff view without both sides.
+ */
+export interface ProposedContent {
+  readonly path: string;
+  /** Absent when the file is being created. */
+  readonly before?: string;
+  /** Absent when the file is being deleted. */
+  readonly after?: string;
+}
+
 export interface AppliedPatch extends PatchPreview {
   readonly appliedAt: number;
 }
@@ -127,6 +143,25 @@ export class PatchEngine {
         .filter((diff) => diff.length > 0)
         .join('\n'),
     });
+  }
+
+  /**
+   * The full before and after text of every file a patch touches.
+   *
+   * Runs the same staging as `preview` and `apply`, so what a reviewer sees is
+   * what would be written — not a re-derivation that could differ.
+   */
+  async proposedContents(patch: Patch): Promise<Result<ProposedContent[]>> {
+    const staged = await this.stage(patch);
+    if (!staged.ok) return staged;
+
+    return ok(
+      staged.value.map((change) => ({
+        path: change.relative,
+        ...(change.before !== undefined ? { before: change.before } : {}),
+        ...(change.after !== undefined ? { after: change.after } : {}),
+      })),
+    );
   }
 
   /** Stage, then write. Rolls back completely if any write fails. */

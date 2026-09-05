@@ -18,15 +18,22 @@
 import * as vscode from 'vscode';
 
 import { clientMethods } from '@aica/schemas';
-import type { ApiSummary, EndpointSummary, PlanSummary, ValidationSummary } from '@aica/schemas';
+import type {
+  ApiSummary,
+  EndpointSummary,
+  PatchSummary,
+  PlanSummary,
+  RunRecord,
+  ValidationSummary,
+} from '@aica/schemas';
 import type { AgentEvent, Result } from '@aica/shared';
 
 import { ChatPanel } from './chat.js';
 import { AgentClient } from './client.js';
-import { VirtualDocuments, showDocument } from './documents.js';
+import { VirtualDocuments, showDocument, showProposedDiff } from './documents.js';
 import { summarizeValidation } from './model/diagnostics.js';
 import { demandsAttention, statusBarText } from './model/status.js';
-import { apiCatalogTree, planTree, validationTree } from './model/tree.js';
+import { apiCatalogTree, patchTree, planTree, runTree, validationTree } from './model/tree.js';
 import type { TreeNode } from './model/tree.js';
 import { FindingActionProvider, ProblemReporter } from './problems.js';
 import { RestartPolicy, ServerProcess, resolveServerEntry } from './serverProcess.js';
@@ -58,6 +65,7 @@ class Session {
   private readonly apisView: NodeTreeProvider;
   private readonly planView: NodeTreeProvider;
   private readonly validationView: NodeTreeProvider;
+  private readonly changesView: NodeTreeProvider;
   private readonly timelineView: NodeTreeProvider;
   private readonly problems: ProblemReporter;
   private readonly statusItem: vscode.StatusBarItem;
@@ -73,7 +81,10 @@ class Session {
   private endpoints = new Map<string, readonly EndpointSummary[]>();
   private plan: PlanSummary | undefined;
   private validation: ValidationSummary | undefined;
+  private patches: readonly PatchSummary[] = [];
+  private runs: readonly RunRecord[] = [];
   private timeline: TreeNode[] = [];
+  private activeRunId: string | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -83,6 +94,7 @@ class Session {
     this.apisView = new NodeTreeProvider(root);
     this.planView = new NodeTreeProvider(root);
     this.validationView = new NodeTreeProvider(root);
+    this.changesView = new NodeTreeProvider(root);
     this.timelineView = new NodeTreeProvider(root);
     this.problems = new ProblemReporter(root);
 
@@ -105,6 +117,7 @@ class Session {
       vscode.window.registerTreeDataProvider('aica.apis', this.apisView),
       vscode.window.registerTreeDataProvider('aica.plan', this.planView),
       vscode.window.registerTreeDataProvider('aica.validation', this.validationView),
+      vscode.window.registerTreeDataProvider('aica.changes', this.changesView),
       vscode.window.registerTreeDataProvider('aica.timeline', this.timelineView),
       vscode.workspace.registerTextDocumentContentProvider('aica', this.documents),
       vscode.languages.registerCodeActionsProvider(
@@ -135,6 +148,12 @@ class Session {
     command('aica.showPlanBrief', () => void this.showPlanBrief());
     command('aica.runValidation', () => void this.runValidation());
     command('aica.analyzeImpact', () => void this.analyzeImpact());
+    command('aica.run', (task?: string) => void this.startRun(task));
+    command('aica.cancelRun', () => void this.cancelRun());
+    command('aica.reviewChange', (node?: TreeNode) => void this.reviewChange(node));
+    command('aica.applyChange', (node?: TreeNode) => void this.applyChange(node));
+    command('aica.revertChange', (node?: TreeNode) => void this.revertChange(node));
+    command('aica.discardChange', (node?: TreeNode) => void this.discardChange(node));
   }
 
   async start(): Promise<void> {
@@ -222,6 +241,7 @@ class Session {
     }
 
     await this.refreshApis();
+    await this.refreshRuns();
 
     if (configured.get<boolean>('index.onStartup') === true) await this.indexWorkspace();
   }
@@ -330,8 +350,239 @@ class Session {
   // -------------------------------------------------------------------------
 
   private openChat(): void {
-    const panel = ChatPanel.show(this.context, (message) => void this.createPlan(message));
+    const panel = ChatPanel.show(this.context, (message) => void this.startRun(message));
     panel.setBusy(false);
+  }
+
+  // -------------------------------------------------------------------------
+  // Runs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Start a run.
+   *
+   * The request resolves only when the run is over, which can be minutes.
+   * Progress does not come from the response: it arrives as events on the
+   * notification channel and is already on screen by the time this returns.
+   */
+  private async startRun(task?: string): Promise<void> {
+    const ready = this.requireProject();
+    if (!ready) return;
+
+    const request =
+      task ??
+      (await vscode.window.showInputBox({
+        title: 'What should the agent do?',
+        prompt: 'For example: add a way to cancel an order',
+        ignoreFocusOut: true,
+      }));
+    if (!request || request.trim().length === 0) return;
+
+    const chat = ChatPanel.show(this.context, (message) => void this.startRun(message));
+    chat.setBusy(true);
+    this.setStatus('$(sync~spin) AICA: working…', request);
+
+    const result = await ready.client.call(clientMethods.startRun, {
+      projectId: ready.projectId,
+      task: request,
+    });
+
+    chat.setBusy(false);
+    this.activeRunId = undefined;
+
+    if (!result.ok) {
+      this.report('The run failed', result);
+      chat.note(result.error.message, 'error');
+      this.setStatus('$(error) AICA', result.error.message);
+      await this.refreshRuns();
+      return;
+    }
+
+    const summary = result.value;
+    await this.refreshPatches();
+    await this.refreshRuns();
+
+    // What happened is stated in terms the user can act on, and a proposal is
+    // never described as a change.
+    if (summary.patchesProposed > summary.patchesApplied) {
+      const pending = summary.patchesProposed - summary.patchesApplied;
+      chat.note(
+        `${pending} change${pending === 1 ? '' : 's'} proposed and waiting for review.`,
+        'warning',
+      );
+      const choice = await vscode.window.showInformationMessage(
+        `AICA proposed ${pending} change${pending === 1 ? '' : 's'}.`,
+        'Review',
+      );
+      if (choice === 'Review') await vscode.commands.executeCommand('aica.changes.focus');
+    } else if (summary.filesChanged.length === 0) {
+      chat.note('No changes were made.', 'info', summary.summary);
+    }
+
+    this.setStatus(
+      summary.validationPassed === true ? '$(pass) AICA' : '$(check) AICA',
+      summary.validationPassed === true
+        ? `Validated. ${summary.filesChanged.length} file(s) changed.`
+        : summary.summary,
+    );
+  }
+
+  private async cancelRun(): Promise<void> {
+    const ready = this.requireProject();
+    if (!ready || !this.activeRunId) {
+      void vscode.window.showInformationMessage('AICA: nothing is running.');
+      return;
+    }
+
+    await ready.client.call(clientMethods.cancelRun, { runId: this.activeRunId });
+  }
+
+  // -------------------------------------------------------------------------
+  // Reviewing changes
+  // -------------------------------------------------------------------------
+
+  private patchIdOf(node?: TreeNode): string | undefined {
+    if (node?.id.startsWith('patch:')) return node.id.split(':')[1];
+    // Invoked from the palette rather than the tree: the oldest proposal is the
+    // one the user has been waiting on.
+    return this.patches.find((patch) => patch.status === 'proposed')?.patchId;
+  }
+
+  /**
+   * Show a proposed change as a diff against the file on disk.
+   *
+   * Against the file as it is now, not as it was when the agent started — the
+   * user may have edited it since, and reviewing against a stale snapshot would
+   * hide exactly the conflict §37 exists to surface.
+   */
+  private async reviewChange(node?: TreeNode): Promise<void> {
+    const ready = this.requireProject();
+    const root = this.workspaceRoot;
+    const patchId = this.patchIdOf(node);
+    if (!ready || !root || !patchId) {
+      void vscode.window.showInformationMessage('AICA: there is no change to review.');
+      return;
+    }
+
+    const preview = await ready.client.call(clientMethods.previewPatch, {
+      projectId: ready.projectId,
+      patchId,
+    });
+    if (!preview.ok) {
+      this.report('Could not open the change', preview);
+      return;
+    }
+
+    for (const file of preview.value.files) {
+      await showProposedDiff({
+        documents: this.documents,
+        workspaceRoot: root,
+        file: file.path,
+        proposed: file.after ?? '',
+        title: `${file.path} — proposed`,
+      });
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      preview.value.rationale,
+      { modal: false },
+      'Apply',
+      'Discard',
+    );
+
+    if (choice === 'Apply') await this.applyChange(node);
+    if (choice === 'Discard') await this.discardChange(node);
+  }
+
+  private async applyChange(node?: TreeNode): Promise<void> {
+    const ready = this.requireProject();
+    const patchId = this.patchIdOf(node);
+    if (!ready || !patchId) return;
+
+    const result = await ready.client.call(clientMethods.applyPatch, {
+      projectId: ready.projectId,
+      patchId,
+    });
+    if (!result.ok) {
+      this.report('Could not apply the change', result);
+      return;
+    }
+
+    await this.refreshPatches();
+
+    const choice = await vscode.window.showInformationMessage(
+      `AICA applied changes to ${result.value.files.length} file(s).`,
+      'Run Validation',
+      'Revert',
+    );
+    if (choice === 'Run Validation') await this.runValidation();
+    if (choice === 'Revert') await this.revertChange(node);
+  }
+
+  private async revertChange(node?: TreeNode): Promise<void> {
+    const ready = this.requireProject();
+    const patchId =
+      node?.id.startsWith('patch:') === true
+        ? node.id.split(':')[1]
+        : this.patches.find((patch) => patch.status === 'applied')?.patchId;
+    if (!ready || !patchId) return;
+
+    const result = await ready.client.call(clientMethods.revertPatch, {
+      projectId: ready.projectId,
+      patchId,
+    });
+    if (!result.ok) {
+      this.report('Could not revert the change', result);
+      return;
+    }
+
+    await this.refreshPatches();
+    void vscode.window.showInformationMessage(
+      `AICA restored ${result.value.files.length} file(s).`,
+    );
+  }
+
+  private async discardChange(node?: TreeNode): Promise<void> {
+    const ready = this.requireProject();
+    const patchId = this.patchIdOf(node);
+    if (!ready || !patchId) return;
+
+    const result = await ready.client.call(clientMethods.discardPatch, {
+      projectId: ready.projectId,
+      patchId,
+    });
+    if (!result.ok) {
+      this.report('Could not discard the change', result);
+      return;
+    }
+
+    await this.refreshPatches();
+  }
+
+  private async refreshPatches(): Promise<void> {
+    const ready = this.requireProject(false);
+    if (!ready) return;
+
+    const result = await ready.client.call(clientMethods.listPatches, {
+      projectId: ready.projectId,
+    });
+    if (!result.ok) return;
+
+    this.patches = result.value.patches;
+    this.refreshViews();
+  }
+
+  private async refreshRuns(): Promise<void> {
+    const ready = this.requireProject(false);
+    if (!ready) return;
+
+    const result = await ready.client.call(clientMethods.listRuns, {
+      projectId: ready.projectId,
+    });
+    if (!result.ok) return;
+
+    this.runs = result.value.runs;
+    this.refreshViews();
   }
 
   private async indexWorkspace(): Promise<void> {
@@ -742,22 +993,56 @@ class Session {
 
   private onEvent(event: AgentEvent): void {
     ChatPanel.active?.append(event);
+    this.activeRunId = event.runId;
 
     const status = statusBarText(event);
     if (status !== undefined) this.setStatus(`$(sync~spin) ${status}`, status);
 
+    // A proposal appearing is the moment review becomes possible, so the view
+    // updates then rather than at the end of a run that may take minutes more.
+    if (event.type === 'PATCH_CREATED' || event.type === 'PATCH_APPLIED') {
+      void this.refreshPatches();
+    }
+
+    if (event.type === 'VALIDATION_FAILED' || event.type === 'VALIDATION_PASSED') {
+      void this.runValidationFromEvent();
+    }
+
     if (demandsAttention(event)) {
       // Something is waiting on the user. A chat panel behind three editor tabs
       // is not a notification.
-      ChatPanel.show(this.context, (message) => void this.createPlan(message));
+      ChatPanel.show(this.context, (message) => void this.startRun(message));
     }
+  }
+
+  /**
+   * Refresh the problems view after the agent ran the checks itself.
+   *
+   * The event says a check passed or failed; it does not carry the findings,
+   * because an event payload is not the place for a hundred compiler errors.
+   * This asks for them.
+   */
+  private async runValidationFromEvent(): Promise<void> {
+    const ready = this.requireProject(false);
+    if (!ready) return;
+
+    const result = await ready.client.call(clientMethods.runValidation, {
+      projectId: ready.projectId,
+      only: [],
+    });
+    if (!result.ok) return;
+
+    this.validation = result.value;
+    this.problems.report(result.value.findings);
+    this.refreshViews();
   }
 
   private refreshViews(): void {
     this.apisView.set(apiCatalogTree(this.apis, this.endpoints));
     this.planView.set(planTree(this.plan));
     this.validationView.set(validationTree(this.validation));
-    this.timelineView.set(this.timeline);
+    this.changesView.set(patchTree(this.patches));
+    this.timelineView.set(this.timeline.length > 0 ? this.timeline : runTree(this.runs));
   }
 
   private requireProject(complain = true): { client: AgentClient; projectId: string } | undefined {

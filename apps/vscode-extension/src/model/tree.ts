@@ -12,10 +12,20 @@
  * to do next.
  */
 
-import type { ApiSummary, EndpointSummary, PlanSummary, ValidationSummary } from '@aica/schemas';
+import type {
+  ApiSummary,
+  EndpointSummary,
+  PatchSummary,
+  PlanSummary,
+  RunRecord,
+  ValidationSummary,
+} from '@aica/schemas';
 
 export type NodeKind =
   | 'api'
+  | 'patch'
+  | 'patchFile'
+  | 'run'
   | 'endpoint'
   | 'plan'
   | 'planStep'
@@ -356,6 +366,115 @@ export function validationTree(summary: ValidationSummary | undefined): TreeNode
 
 function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+// ---------------------------------------------------------------------------
+// Proposed changes
+// ---------------------------------------------------------------------------
+
+/**
+ * Changes waiting on the user.
+ *
+ * The status is in the label rather than only in an icon, because the
+ * difference between "this is on disk" and "this is a proposal" is the most
+ * consequential thing in the whole interface, and an icon is something a person
+ * has to have learned.
+ */
+export function patchTree(patches: readonly PatchSummary[]): TreeNode[] {
+  if (patches.length === 0) {
+    return [
+      placeholder(
+        'patches:empty',
+        'No proposed changes',
+        'Changes the agent proposes appear here for review before anything is written.',
+      ),
+    ];
+  }
+
+  return patches.map((patch) => ({
+    id: `patch:${patch.patchId}`,
+    kind: 'patch' as const,
+    label: patch.rationale,
+    description: patchStatusLabel(patch),
+    tooltip: `${patch.files.length} file(s) · ${patch.status}`,
+    icon: patchIcon(patch.status),
+    // Drives the context menu: only a proposal can be applied, only something
+    // applied can be reverted.
+    contextValue: `aica.patch.${patch.status}`,
+    children: patch.files.map((file, index) => ({
+      id: `patch:${patch.patchId}:${index}`,
+      kind: 'patchFile' as const,
+      label: file.path,
+      description: `${file.kind} · +${file.linesAdded} −${file.linesRemoved}`,
+      icon: fileIcon(file.kind),
+      location: { file: file.path },
+    })),
+  }));
+}
+
+function patchStatusLabel(patch: PatchSummary): string {
+  const files = `${patch.files.length} file${patch.files.length === 1 ? '' : 's'}`;
+  if (patch.status === 'proposed') return `${files} · awaiting review`;
+  return `${files} · ${patch.status}`;
+}
+
+function patchIcon(status: PatchSummary['status']): string {
+  if (status === 'applied') return 'check';
+  if (status === 'reverted') return 'discard';
+  if (status === 'discarded') return 'circle-slash';
+  return 'git-pull-request';
+}
+
+function fileIcon(kind: 'created' | 'modified' | 'deleted'): string {
+  if (kind === 'created') return 'diff-added';
+  if (kind === 'deleted') return 'diff-removed';
+  return 'diff-modified';
+}
+
+// ---------------------------------------------------------------------------
+// Run history
+// ---------------------------------------------------------------------------
+
+export function runTree(runs: readonly RunRecord[]): TreeNode[] {
+  if (runs.length === 0) {
+    return [placeholder('runs:empty', 'No runs yet', 'Describe a task in the chat to start one.')];
+  }
+
+  return runs.map((run) => ({
+    id: `run:${run.id}`,
+    kind: 'run' as const,
+    label: run.task,
+    description: describeRun(run),
+    tooltip: [run.summary ?? '', `${run.provider} · ${run.model}`].filter(Boolean).join('\n'),
+    icon: runIcon(run),
+    contextValue: 'aica.run',
+  }));
+}
+
+function describeRun(run: RunRecord): string {
+  if (run.status === 'running') return 'running…';
+
+  const files = `${run.filesChanged} file${run.filesChanged === 1 ? '' : 's'}`;
+  // A run that changed nothing has nothing to validate, and reporting that as
+  // a pass would be the same false reassurance the validation layer exists to
+  // prevent.
+  const validation =
+    run.filesChanged === 0
+      ? 'no changes'
+      : run.validationPassed === true
+        ? 'validated'
+        : run.validationPassed === false
+          ? 'not validated'
+          : 'unvalidated';
+
+  return `${run.status} · ${files} · ${validation}`;
+}
+
+function runIcon(run: RunRecord): string {
+  if (run.status === 'running') return 'sync~spin';
+  if (run.status === 'failed') return 'error';
+  if (run.status === 'cancelled') return 'circle-slash';
+  return run.validationPassed === true ? 'pass' : 'history';
 }
 
 /** Flatten a tree, for tests and for a "reveal by id" lookup. */

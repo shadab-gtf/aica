@@ -14,8 +14,10 @@
  * can be tested without a transport.
  */
 
+import type { AIProvider } from '@aica/agent-core';
 import { retrieve } from '@aica/code-intelligence';
 import { analyzeImpact } from '@aica/code-graph';
+import { makePatch } from '@aica/fs-engine';
 import { buildPlan, matchEndpoint, parseIntent, renderBrief } from '@aica/integration-planner';
 import type { RpcConnection } from '@aica/rpc';
 import type { ProjectSummary } from '@aica/schemas';
@@ -25,6 +27,7 @@ import { AgentError, ErrorCode, EventBus, err, ok, silentLogger } from '@aica/sh
 import { diagnose } from '@aica/validation-engine';
 
 import { Gateway } from './gateway.js';
+import { Orchestrator } from './orchestrator.js';
 import type { KeychainReader } from './project.js';
 import { ProjectSession } from './project.js';
 import {
@@ -45,6 +48,11 @@ export interface AgentServerOptions {
   readonly logger?: Logger;
   /** Injected in tests so no Postman request ever leaves the process. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Injected in tests so a whole run — planning, tool dispatch, patching,
+   * validation, repair — executes with no key and no network.
+   */
+  readonly provider?: AIProvider;
 }
 
 interface ClientCapabilities {
@@ -57,6 +65,12 @@ export class AgentServer {
   private readonly logger: Logger;
   private readonly events = new EventBus();
   private readonly projects = new Map<string, ProjectSession>();
+  /**
+   * One orchestrator per project. It owns that project's patch registry, so a
+   * patch proposed in one project cannot be applied from another — §48's
+   * isolation again, this time for something that writes.
+   */
+  private readonly orchestrators = new Map<string, Orchestrator>();
   private capabilities: ClientCapabilities = { secretStorage: false, approvals: false };
   private initialized = false;
 
@@ -321,12 +335,212 @@ export class AgentServer {
       return ok(toImpactSummary(report));
     });
 
+    g.register(clientMethods.startRun, async (params, context) => {
+      const orchestrator = this.orchestrator(params.projectId);
+      if (!orchestrator.ok) return orchestrator;
+
+      const summary = await orchestrator.value.run({
+        task: params.task,
+        ...(params.apiId ? { apiId: params.apiId } : {}),
+        signal: context.signal,
+      });
+      if (!summary.ok) return summary;
+
+      return ok({
+        runId: summary.value.runId,
+        summary: summary.value.summary,
+        iterations: summary.value.iterations,
+        toolCalls: summary.value.toolCalls,
+        patchesProposed: summary.value.patchesProposed,
+        patchesApplied: summary.value.patchesApplied,
+        filesChanged: [...summary.value.filesChanged],
+        ...(summary.value.validationPassed !== undefined
+          ? { validationPassed: summary.value.validationPassed }
+          : {}),
+        stoppedBecause: summary.value.stoppedBecause,
+      });
+    });
+
     g.register(clientMethods.cancelRun, async (params) => {
-      // Cancellation of an in-flight request is handled by the RPC layer's own
-      // cancel notification. This method exists for a run identified by id
-      // rather than by request, which arrives with the agent loop.
-      this.logger.debug('cancel requested', { runId: params.runId });
+      // Any project's orchestrator may own the run; ids are unique across them.
+      for (const orchestrator of this.orchestrators.values()) {
+        if (orchestrator.cancel(params.runId)) return ok({ cancelled: true });
+      }
       return ok({ cancelled: false });
+    });
+
+    g.register(clientMethods.listRuns, async (params) => {
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+
+      const runs = await session.value.store.listRuns(params.projectId, { limit: params.limit });
+      if (!runs.ok) return runs;
+
+      return ok({
+        runs: runs.value.map((run) => ({
+          id: run.id,
+          task: run.task,
+          provider: run.provider,
+          model: run.model,
+          status: run.status,
+          startedAt: run.startedAt,
+          ...(run.finishedAt ? { finishedAt: run.finishedAt } : {}),
+          ...(run.summary ? { summary: run.summary } : {}),
+          toolCalls: run.toolCalls,
+          filesChanged: run.filesChanged,
+          ...(run.validationPassed !== undefined ? { validationPassed: run.validationPassed } : {}),
+        })),
+      });
+    });
+
+    g.register(clientMethods.listRunEvents, async (params) => {
+      // Replay, for a UI that connected mid-run or is reopening a finished one.
+      for (const session of this.projects.values()) {
+        const events = await session.store.listEvents(params.runId, params.sinceSeq);
+        if (events.ok && events.value.length > 0) {
+          return ok({ events: events.value.map((event) => ({ ...event })) });
+        }
+      }
+      return ok({ events: [] });
+    });
+
+    g.register(clientMethods.listPatches, async (params) => {
+      const orchestrator = this.orchestrator(params.projectId);
+      if (!orchestrator.ok) return orchestrator;
+
+      return ok({
+        patches: orchestrator.value.patches.list().map((staged) => ({
+          patchId: staged.patch.id,
+          rationale: staged.preview.rationale,
+          status: staged.status,
+          proposedAt: staged.proposedAt,
+          files: staged.preview.files.map((file) => ({ ...file })),
+        })),
+      });
+    });
+
+    g.register(clientMethods.previewPatch, async (params) => {
+      const staged = this.stagedPatch(params.projectId, params.patchId);
+      if (!staged.ok) return staged;
+
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+
+      // Re-staged against the working tree as it is now, so the review shows
+      // the change against what is actually there — not against a snapshot
+      // taken when the agent started, which the user may have edited since.
+      const contents = await session.value.patchEngine().proposedContents(staged.value.patch);
+      if (!contents.ok) return contents;
+
+      return ok({
+        patchId: params.patchId,
+        rationale: staged.value.preview.rationale,
+        diff: staged.value.preview.diff,
+        files: contents.value.map((file) => ({ ...file })),
+      });
+    });
+
+    g.register(clientMethods.applyPatch, async (params) => {
+      const staged = this.stagedPatch(params.projectId, params.patchId);
+      if (!staged.ok) return staged;
+
+      if (staged.value.status === 'applied') {
+        return err(
+          new AgentError(ErrorCode.ALREADY_EXISTS, 'That change has already been applied.'),
+        );
+      }
+
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+
+      // Captured before the write so a revert restores exactly what was there,
+      // rather than inverting a diff and hoping.
+      const before = await session.value.patchEngine().proposedContents(staged.value.patch);
+      if (!before.ok) return before;
+
+      const applied = await session.value.patchEngine().apply(staged.value.patch);
+      if (!applied.ok) return applied;
+
+      const orchestrator = this.orchestrator(params.projectId);
+      if (orchestrator.ok) {
+        orchestrator.value.patches.markApplied(params.patchId, applied.value);
+        orchestrator.value.patches.rememberOriginals(
+          params.patchId,
+          new Map(before.value.map((file) => [file.path, file.before])),
+        );
+      }
+
+      return ok({
+        patchId: params.patchId,
+        files: applied.value.files.map((file) => file.path),
+      });
+    });
+
+    g.register(clientMethods.revertPatch, async (params) => {
+      const staged = this.stagedPatch(params.projectId, params.patchId);
+      if (!staged.ok) return staged;
+
+      if (staged.value.status !== 'applied') {
+        return err(
+          new AgentError(
+            ErrorCode.PRECONDITION_FAILED,
+            'That change was never applied, so there is nothing to revert.',
+          ),
+        );
+      }
+
+      const originals = staged.value.revertTo;
+      if (!originals) {
+        return err(
+          new AgentError(
+            ErrorCode.PRECONDITION_FAILED,
+            'The content from before this change was not recorded, so it cannot be reverted automatically. Use your version control history.',
+          ),
+        );
+      }
+
+      const session = this.project(params.projectId);
+      if (!session.ok) return session;
+
+      const restore = makePatch(
+        `Revert: ${staged.value.preview.rationale}`,
+        [...originals.entries()].map(([path, content]) => ({
+          path,
+          operation:
+            content === undefined
+              ? ({ kind: 'delete' } as const)
+              : ({ kind: 'replace', content } as const),
+        })),
+      );
+
+      const applied = await session.value.patchEngine().apply(restore);
+      if (!applied.ok) return applied;
+
+      const orchestrator = this.orchestrator(params.projectId);
+      if (orchestrator.ok) orchestrator.value.patches.markReverted(params.patchId);
+
+      return ok({
+        patchId: params.patchId,
+        files: applied.value.files.map((file) => file.path),
+      });
+    });
+
+    g.register(clientMethods.discardPatch, async (params) => {
+      const staged = this.stagedPatch(params.projectId, params.patchId);
+      if (!staged.ok) return staged;
+
+      if (staged.value.status === 'applied') {
+        return err(
+          new AgentError(
+            ErrorCode.PRECONDITION_FAILED,
+            'That change is already on disk. Revert it rather than discarding it.',
+          ),
+        );
+      }
+
+      const orchestrator = this.orchestrator(params.projectId);
+      if (orchestrator.ok) orchestrator.value.patches.markDiscarded(params.patchId);
+      return ok({ patchId: params.patchId, discarded: true });
     });
   }
 
@@ -353,6 +567,59 @@ export class AgentServer {
       if (!parsed.success || !parsed.data.found) return undefined;
       return parsed.data.value;
     };
+  }
+
+  /** The orchestrator for a project, created on first use. */
+  private orchestrator(projectId: string): Result<Orchestrator> {
+    const existing = this.orchestrators.get(projectId);
+    if (existing) return ok(existing);
+
+    const session = this.project(projectId);
+    if (!session.ok) return session;
+
+    const orchestrator = new Orchestrator({
+      session: session.value,
+      bus: this.events,
+      logger: this.logger,
+      askApproval: async (request) => {
+        if (!this.capabilities.approvals) return { granted: false };
+
+        const response = await this.options.connection.request(
+          serverMethods.requestApproval.method,
+          {
+            approvalId: request.id,
+            subject: request.action.subject,
+            risk: request.action.risk,
+            detail: request.reason,
+            ...(request.action.environment ? { environment: request.action.environment } : {}),
+          },
+        );
+        if (!response.ok) return { granted: false };
+
+        const parsed = serverMethods.requestApproval.result.safeParse(response.value);
+        // An unparseable answer is not an answer. Failing closed is the only
+        // safe reading of "the client said something we do not understand".
+        if (!parsed.success) return { granted: false };
+        return { granted: parsed.data.granted, remember: parsed.data.remembered };
+      },
+      ...(this.options.provider ? { provider: this.options.provider } : {}),
+    });
+
+    this.orchestrators.set(projectId, orchestrator);
+    return ok(orchestrator);
+  }
+
+  private stagedPatch(projectId: string, patchId: string) {
+    const orchestrator = this.orchestrator(projectId);
+    if (!orchestrator.ok) return orchestrator;
+
+    const staged = orchestrator.value.patches.get(patchId);
+    if (!staged) {
+      return err(
+        new AgentError(ErrorCode.NOT_FOUND, `No patch "${patchId}" was proposed in this project.`),
+      );
+    }
+    return ok(staged);
   }
 
   private project(projectId: string): Result<ProjectSession> {

@@ -8,17 +8,47 @@
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"],
   "references": [
-    { "path": "../../packages/shared/tsconfig.build.json" },
-    { "path": "../../packages/schemas/tsconfig.build.json" },
-    { "path": "../../packages/rpc/tsconfig.build.json" },
-    { "path": "../../packages/security-engine/tsconfig.build.json" },
-    { "path": "../../packages/api-ir/tsconfig.build.json" },
-    { "path": "../../packages/api-engine/tsconfig.build.json" },
-    { "path": "../../packages/exec-engine/tsconfig.build.json" },
-    { "path": "../../packages/fs-engine/tsconfig.build.json" },
-    { "path": "../../packages/code-intelligence/tsconfig.build.json" },
-    { "path": "../../packages/code-graph/tsconfig.build.json" },
-    { "path": "../../packages/integration-planner/tsconfig.build.json" },
-    { "path": "../../packages/validation-engine/tsconfig.build.json" }
+    {
+      "path": "../../packages/shared/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/schemas/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/rpc/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/security-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/api-ir/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/api-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/exec-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/fs-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/code-intelligence/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/code-graph/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/integration-planner/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/validation-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/tool-registry/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/agent-core/tsconfig.build.json"
+    }
   ]
 }
