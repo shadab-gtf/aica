@@ -260,12 +260,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/shadab-gtf/koie.git"
+    "url": "https://github.com/shadab-gtf/aica.git"
   },
   "bugs": {
-    "url": "https://github.com/shadab-gtf/koie/issues"
+    "url": "https://github.com/shadab-gtf/aica/issues"
   },
-  "homepage": "https://github.com/shadab-gtf/koie#readme",
+  "homepage": "https://github.com/shadab-gtf/aica#readme",
   "keywords": [
     "api",
     "openapi",
