@@ -23,7 +23,8 @@
 import type { Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, err, ok, silentLogger } from '@aica/shared';
 
-import { MessageDecoder, encodeMessage } from './framing.js';
+import type { Codec, Decoder } from './codec.js';
+import { lengthPrefixedCodec } from './codec.js';
 import type {
   Message,
   NotificationMessage,
@@ -66,6 +67,12 @@ export interface ConnectionOptions {
   readonly logger?: Logger;
   /** Requests that outlive this are settled as timeouts. Zero disables it. */
   readonly requestTimeoutMs?: number;
+  /**
+   * How messages are framed. Defaults to `Content-Length`, which is what this
+   * system's own server speaks; MCP servers over stdio need the line-delimited
+   * one.
+   */
+  readonly codec?: Codec;
 }
 
 interface Pending {
@@ -79,7 +86,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 export class RpcConnection {
   private readonly transport: Transport;
   private readonly logger: Logger;
-  private readonly decoder = new MessageDecoder();
+  private readonly codec: Codec;
+  private readonly decoder: Decoder;
   private readonly requestTimeoutMs: number;
 
   private readonly requestHandlers = new Map<string, RequestHandler>();
@@ -93,6 +101,8 @@ export class RpcConnection {
   constructor(options: ConnectionOptions) {
     this.transport = options.transport;
     this.logger = (options.logger ?? silentLogger).child('rpc');
+    this.codec = options.codec ?? lengthPrefixedCodec;
+    this.decoder = this.codec.createDecoder();
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
     this.transport.onData((chunk) => {
@@ -214,7 +224,7 @@ export class RpcConnection {
 
   private send(message: Message): Result<true> {
     try {
-      this.transport.send(encodeMessage(message));
+      this.transport.send(this.codec.encode(message));
       return ok(true);
     } catch (error) {
       return err(AgentError.from(error, ErrorCode.INTERNAL));

@@ -49,6 +49,9 @@
     },
     {
       "path": "../../packages/agent-core/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/mcp-engine/tsconfig.build.json"
     }
   ]
 }

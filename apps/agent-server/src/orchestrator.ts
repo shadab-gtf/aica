@@ -24,6 +24,7 @@
 import type { AIProvider, Message } from '@aica/agent-core';
 import { AgentRuntime, OpenRouterProvider, ScriptedProvider } from '@aica/agent-core';
 import { buildPlan, parseIntent, renderBrief } from '@aica/integration-planner';
+import { McpRegistry } from '@aica/mcp-engine';
 import type { EventBus, Id, Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, RunEmitter, err, newId, ok, silentLogger } from '@aica/shared';
 import { ApprovalGate } from '@aica/security-engine';
@@ -78,6 +79,7 @@ const SELF_APPLY_MODES: ReadonlySet<string> = new Set(['auto', 'askOnDestructive
 export class Orchestrator {
   private readonly logger: Logger;
   private readonly running = new Map<string, AbortController>();
+  private mcp: McpRegistry | undefined;
 
   constructor(private readonly options: OrchestratorOptions) {
     this.logger = (options.logger ?? silentLogger).child('run');
@@ -159,6 +161,9 @@ export class Orchestrator {
       unsubscribe();
       this.running.delete(runId);
       this.options.bus.closeRun(runId);
+      // Third-party processes do not outlive the run that needed them.
+      this.mcp?.closeAll();
+      this.mcp = undefined;
     }
   }
 
@@ -232,6 +237,16 @@ export class Orchestrator {
     const registry = new ToolRegistry();
     for (const tool of buildToolset({ session, patches: this.patches, canApply })) {
       registry.register(tool);
+    }
+
+    // MCP tools arrive with their risk and approval requirement already
+    // decided, so from here they are ordinary tools. A server that will not
+    // start is reported and skipped: one broken entry in a config file must not
+    // be the reason a run cannot happen.
+    const mcp = await this.connectMcp(emitter);
+    for (const tool of mcp.toolDefinitions()) {
+      const added = registry.registerErased(tool);
+      if (!added.ok) this.logger.warn('MCP tool rejected', { tool: tool.name });
     }
 
     const approvals = new ApprovalGate({
@@ -383,6 +398,59 @@ export class Orchestrator {
       ...(validationPassed !== undefined ? { validationPassed } : {}),
       stoppedBecause: outcome.value.stoppedBecause,
     });
+  }
+
+  /**
+   * Start this project's MCP servers.
+   *
+   * Their environment secrets are resolved here rather than inside the client:
+   * a server's `env` is a map of secret *references*, and resolving them is the
+   * one place that touches values — which registers them with the redactor on
+   * the way through, so anything a server later echoes back is scrubbed.
+   */
+  private async connectMcp(emitter: RunEmitter): Promise<McpRegistry> {
+    const session = this.options.session;
+    const configured = session.configuration.mcpServers;
+
+    const registry = new McpRegistry({
+      servers: configured,
+      environment: 'local',
+      logger: this.logger,
+      resolveEnv: async (env) => {
+        const resolved: Record<string, string> = {};
+        for (const [name, reference] of Object.entries(env)) {
+          const value = await session.requireSecrets().resolve(reference);
+          if (!value.ok) return value;
+          resolved[name] = value.value;
+        }
+        return ok(resolved);
+      },
+    });
+
+    this.mcp = registry;
+    if (configured.length === 0) return registry;
+
+    const status = await registry.connectAll();
+
+    for (const server of status) {
+      if (server.connected) {
+        emitter.emit('STATUS', {
+          message: `Connected to the "${server.name}" MCP server (${server.toolCount} tool(s)).`,
+        });
+        continue;
+      }
+
+      // Reported as a finding rather than a log line: a capability the user
+      // configured and is not getting is something they need to see.
+      emitter.emit('FINDING_REPORTED', {
+        findingId: newId('find'),
+        title: `The "${server.name}" MCP server is unavailable: ${server.error ?? 'unknown reason'}`,
+        severity: 'MEDIUM',
+        category: 'mcp',
+      });
+    }
+
+    return registry;
   }
 
   /**

@@ -62,6 +62,9 @@ importers:
       '@aica/integration-planner':
         specifier: workspace:*
         version: link:../../packages/integration-planner
+      '@aica/mcp-engine':
+        specifier: workspace:*
+        version: link:../../packages/mcp-engine
       '@aica/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
@@ -233,6 +236,27 @@ importers:
       '@aica/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/mcp-engine:
+    dependencies:
+      '@aica/rpc':
+        specifier: workspace:*
+        version: link:../rpc
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@aica/tool-registry':
+        specifier: workspace:*
+        version: link:../tool-registry
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/rpc:
     dependencies:

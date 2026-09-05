@@ -47,6 +47,9 @@
       "path": "packages/tool-registry/tsconfig.build.json"
     },
     {
+      "path": "packages/mcp-engine/tsconfig.build.json"
+    },
+    {
       "path": "packages/agent-core/tsconfig.build.json"
     },
     {

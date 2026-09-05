@@ -24,6 +24,7 @@
     "@aica/exec-engine": "workspace:*",
     "@aica/fs-engine": "workspace:*",
     "@aica/integration-planner": "workspace:*",
+    "@aica/mcp-engine": "workspace:*",
     "@aica/rpc": "workspace:*",
     "@aica/schemas": "workspace:*",
     "@aica/security-engine": "workspace:*",

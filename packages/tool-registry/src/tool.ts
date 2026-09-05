@@ -101,6 +101,18 @@ export interface AnyToolDefinition {
   readonly description: string;
   readonly category: ToolCategory;
   readonly inputSchema: z.ZodTypeAny;
+  /**
+   * A JSON Schema supplied directly, instead of derived from `inputSchema`.
+   *
+   * Exists for one case: an MCP tool, whose contract is published by the server
+   * and enforced by it. Deriving a schema from a permissive Zod stand-in would
+   * advertise `{}` to the model and hide the real parameters; re-deriving Zod
+   * from the server's schema would create a second contract that could disagree
+   * with the one actually enforced. Passing it through keeps the authority
+   * where it belongs — with the server — and the local Zod schema then only
+   * checks the shape this process needs to be true before dispatching.
+   */
+  readonly parametersSchema?: Record<string, unknown>;
   readonly risk: RiskLevel;
   readonly actionKind: ActionKind;
   readonly mutates: boolean;
@@ -146,7 +158,17 @@ export function toToolSpec(definition: {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodTypeAny;
+  readonly parametersSchema?: Record<string, unknown>;
 }): ToolSpec {
+  if (definition.parametersSchema) {
+    // Already JSON Schema, from whoever owns the contract. Only the keys
+    // providers reject are stripped.
+    const supplied = { ...definition.parametersSchema };
+    delete supplied['$schema'];
+    delete supplied['title'];
+    return { name: definition.name, description: definition.description, parameters: supplied };
+  }
+
   const parameters = zodToJsonSchema(definition.inputSchema, {
     target: 'jsonSchema7',
     $refStrategy: 'none',

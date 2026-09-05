@@ -102,6 +102,19 @@ export const mcpServerConfigSchema = z.object({
   /** Tools permitted from this server; empty means all discovered tools. */
   allowedTools: z.array(z.string()).default([]),
   deniedTools: z.array(z.string()).default([]),
+  /**
+   * Tools the user has actually looked at and vouches for.
+   *
+   * Deliberately separate from `allowedTools`, which only narrows *which* tools
+   * are offered. Restricting a server to three tools is not the same statement
+   * as "these three are safe to run without asking", and conflating them would
+   * turn a scoping decision into a trust decision by accident.
+   *
+   * This is the only thing that lowers the risk assigned to an MCP tool. A
+   * server's own `readOnlyHint` cannot, because a program asserting that it is
+   * harmless is precisely the assertion that cannot be taken on trust.
+   */
+  trustedTools: z.array(z.string()).default([]),
   /** Confirm every tool from this server regardless of its declared risk. */
   requireApproval: z.boolean().default(true),
   allowedEnvironments: z.array(targetEnvironmentSchema).default(['local']),
