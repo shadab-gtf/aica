@@ -13,6 +13,11 @@ coverage/
 # .mcp.json holds MCP server credentials in plain text (e.g. the Context7 API
 # key as an Authorization header), so it stays out of the repository.
 .mcp.json
+# `supabase link` writes the linked project ref and cached credentials here;
+# `.branches` is local branch state. Neither belongs in the repository — the
+# migration does.
+supabase/.temp/
+supabase/.branches/
 .claude/settings.local.json
 .env
 .env.*

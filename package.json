@@ -26,7 +26,10 @@
     "db:reset": "supabase db reset",
     "db:push": "supabase db push --local",
     "build:web": "pnpm --filter aica-web build",
-    "e2e": "pnpm --filter aica-web e2e"
+    "e2e": "pnpm --filter aica-web e2e",
+    "db:link": "supabase link",
+    "db:push:remote": "supabase db push",
+    "db:pull:remote": "supabase db pull"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

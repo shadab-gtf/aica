@@ -1,6 +1,7 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phases 0-5 complete (gate green: build, typecheck, lint, format, 1194 tests).
+**Status:** Phases 0-10 complete (gate green: build, typecheck, lint, format, 1441 tests, plus
+13 Playwright end-to-end tests against a production build of the dashboard).
 Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
@@ -60,15 +61,15 @@ One local agent-server owns all state. Both user interfaces are clients.
               │ fs-engine    exec-engine     │
               │ security-engine  memory      │
               ├──────────────────────────────┤
-              │  SQLite (index, runs, audit) │
+              │ Postgres (index, runs, audit)│
               └──────────────────────────────┘
 ```
 
 **Why a separate server process.** The code index, API catalog, run history, and audit log are
 expensive to build and must be identical for both UIs. A single owner means one indexing pass, one
-event bus, and one transaction boundary. Native modules (`better-sqlite3`) load in a plain Node 22
-process rather than the VS Code extension host, avoiding ABI coupling to whichever Electron build
-ships with the editor. The gateway is the only layer that knows about transports, so the same core
+event bus, and one transaction boundary. It also keeps heavy dependencies — the TypeScript compiler
+the indexer runs on, among others — in a plain Node 22 process rather than the VS Code extension
+host, avoiding coupling to whichever Electron build ships with the editor. The gateway is the only layer that knows about transports, so the same core
 can later be hosted remotely without changes to either UI.
 
 **Trust boundary.** The server is the policy enforcement point. UIs may _request_ anything; the
@@ -205,9 +206,30 @@ Principal tables: `projects`, `files`, `symbols`, `refs`, `graph_edges`, `apis`,
 `mcp_servers`, `mcp_tools`, `approvals`, `audit_log`. Full-text search over symbol names and
 endpoint paths/summaries uses Postgres `tsvector` with GIN indexes.
 
-**Local, and that is a security property.** The stack runs on loopback (`supabase start`), so an
-index of a private codebase does not leave the machine. Pointing this at a hosted project is
-possible and deliberate: it takes editing `database.url` and supplying a key reference.
+**Local by default, and that default is a security property** — with one caveat worth stating
+because it is easy to get wrong. The agent connects over loopback (`http://127.0.0.1:54321`), so
+nothing is sent to a third party. But `supabase start` publishes its container ports on `0.0.0.0`,
+not on loopback, so on an untrusted network the stack itself is reachable by other machines: the
+REST API on 54321, Postgres on 54322 with the CLI's shared default credentials, and Studio on
+54323 with no authentication at all. Row-level security still stops an unauthenticated REST reader
+from seeing a single row — but a direct Postgres connection is a superuser connection and RLS does
+not apply to it.
+
+The practical reading: the local stack is safe on a machine you trust, and should be firewalled or
+left stopped on a shared network. `pnpm db:stop` when it is not in use.
+
+**Hosted is supported and is a different decision.** Pointing `database.url` at a Supabase project
+sends the metadata this schema stores — file paths, symbol names, kinds, signatures, and the graph
+between them — to a server somebody else operates. That is a real map of a private codebase even
+without a line of source in it, so it is a choice a project makes explicitly rather than one it
+falls into: it takes `supabase link`, a `db:push:remote`, an edited `url`, and a secret-key
+reference. Source text, doc comments, prompts, and model output are still never stored, hosted or
+not, because no column exists to put them in.
+
+**The key must be the secret one.** Every table has row-level security enabled with no policies,
+so the server connects with the service role and bypasses it. A publishable or anon key — the
+browser-safe one — reads nothing at all, which is the intended behaviour and not a
+misconfiguration to work around.
 
 **Optional.** Disabled by default. With no database the server keeps everything in memory and
 loses it on restart; nothing else changes. Indexing a repository must never require Docker to be
