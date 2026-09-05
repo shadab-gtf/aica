@@ -22,7 +22,6 @@ const SIZE = 128;
 
 /** Colours, matching the dashboard's palette so the two look related. */
 const BACKGROUND = [16, 19, 23, 255];
-const LINE = [139, 149, 161, 255];
 const ACCENT = [98, 168, 255, 255];
 
 const pixels = new Uint8Array(SIZE * SIZE * 4);
@@ -50,16 +49,6 @@ function rectangle(x, y, width, height, colour, radius = 0) {
         }
       }
       set(x + dx, y + dy, colour);
-    }
-  }
-}
-
-function ring(cx, cy, outer, thickness, colour) {
-  const inner = outer - thickness;
-  for (let y = cy - outer; y <= cy + outer; y += 1) {
-    for (let x = cx - outer; x <= cx + outer; x += 1) {
-      const distance = Math.hypot(x - cx, y - cy);
-      if (distance <= outer && distance >= inner) set(x, y, colour);
     }
   }
 }
