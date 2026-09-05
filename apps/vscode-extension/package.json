@@ -1,0 +1,188 @@
+{
+  "name": "aica-vscode",
+  "displayName": "AICA — API Integration & Code Intelligence",
+  "description": "Import an API, index the codebase, plan the integration, and validate the result.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "aica",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.96.0",
+    "node": ">=22.0.0"
+  },
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "categories": [
+    "Programming Languages",
+    "Testing",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "clean": "tsc -b tsconfig.build.json --clean",
+    "bundle": "node ./scripts/bundle.mjs",
+    "package": "pnpm run build && pnpm run bundle"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aica",
+          "title": "AICA",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aica": [
+        {
+          "id": "aica.apis",
+          "name": "API Catalog"
+        },
+        {
+          "id": "aica.plan",
+          "name": "Plan"
+        },
+        {
+          "id": "aica.validation",
+          "name": "Validation"
+        },
+        {
+          "id": "aica.timeline",
+          "name": "Run Timeline"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aica.chat",
+        "title": "AICA: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aica.indexWorkspace",
+        "title": "AICA: Index Workspace",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aica.importApi",
+        "title": "AICA: Import API Specification",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "aica.importFromPostman",
+        "title": "AICA: Import from Postman"
+      },
+      {
+        "command": "aica.setPostmanKey",
+        "title": "AICA: Set Postman API Key"
+      },
+      {
+        "command": "aica.clearPostmanKey",
+        "title": "AICA: Clear Postman API Key"
+      },
+      {
+        "command": "aica.createPlan",
+        "title": "AICA: Plan an Integration",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "aica.showPlanBrief",
+        "title": "AICA: Show Plan Brief"
+      },
+      {
+        "command": "aica.runValidation",
+        "title": "AICA: Run Validation",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "aica.analyzeImpact",
+        "title": "AICA: Analyze Impact of This File"
+      },
+      {
+        "command": "aica.restartServer",
+        "title": "AICA: Restart Agent Server"
+      },
+      {
+        "command": "aica.showOutput",
+        "title": "AICA: Show Agent Server Log"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aica.importApi",
+          "when": "view == aica.apis",
+          "group": "navigation"
+        },
+        {
+          "command": "aica.indexWorkspace",
+          "when": "view == aica.apis",
+          "group": "navigation"
+        },
+        {
+          "command": "aica.createPlan",
+          "when": "view == aica.plan",
+          "group": "navigation"
+        },
+        {
+          "command": "aica.runValidation",
+          "when": "view == aica.validation",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "aica.analyzeImpact",
+          "when": "editorLangId =~ /typescript|typescriptreact|javascript|javascriptreact/",
+          "group": "aica@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AICA",
+      "properties": {
+        "aica.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the agent server entry point. Left empty, the extension uses the server bundled with it."
+        },
+        "aica.server.logLevel": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "silent"
+          ],
+          "default": "info",
+          "description": "Log level for the agent server process. Its output appears in the AICA output channel."
+        },
+        "aica.index.onStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Index the workspace when the extension activates. Off by default: indexing a large repository is not instant, and it should be the user's choice when to pay for it."
+        },
+        "aica.index.maxFiles": {
+          "type": "number",
+          "default": 5000,
+          "description": "Largest number of files indexed in one pass."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@aica/agent-server": "workspace:*",
+    "@types/vscode": "~1.96.0"
+  },
+  "dependencies": {
+    "@aica/rpc": "workspace:*",
+    "@aica/schemas": "workspace:*",
+    "@aica/shared": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

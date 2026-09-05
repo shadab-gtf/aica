@@ -91,17 +91,29 @@ const HTTP_MECHANISMS: Readonly<Record<string, string>> = {
 /**
  * Find where the codebase calls each endpoint of a specification.
  *
- * Base paths are handled the way `compareSpecs` handles them: a spec whose
- * server is `https://api.test/v1` writes `/orders`, while the code may write
- * `/v1/orders` or build the base separately. Both forms are tried, and which
- * one matched is recorded in `strength`.
+ * Base paths are handled the way `compareSpecs` handles them, and in both
+ * directions, because the prefix can sit on either side:
+ *
+ * - The spec's server is `https://api.test/v1` and its path is `/orders`, while
+ *   the code writes `/v1/orders` in full.
+ * - The spec's server is the bare origin and its path is `/v1/orders` — which
+ *   is what every cURL-derived spec looks like — while the code keeps `/v1` in
+ *   a `BASE_URL` constant and writes only `/orders`.
+ *
+ * Missing the second case is not a near miss. It reports an endpoint the
+ * codebase already calls as uncalled, and a plan built on that goes off to
+ * write a second client beside the one that is already there.
+ *
+ * Both prefixes are evidence, not assumption: one is read from the spec's
+ * servers, the other from absolute URLs found in the code.
  */
 export function matchEndpoints(spec: ApiSpec, index: CodeIndex): EndpointMatch[] {
   const literals = collectLiterals(index);
   const bases = basePathsOf(spec);
+  const codeBases = codeBasePaths(index);
 
   return spec.endpoints.map((endpoint) => {
-    const callSites = findCallSites(endpoint, literals, bases, index);
+    const callSites = findCallSites(endpoint, literals, bases, codeBases, index);
     return {
       endpoint,
       callSites,
@@ -161,10 +173,12 @@ function findCallSites(
   endpoint: Endpoint,
   literals: readonly IndexedLiteral[],
   bases: readonly string[],
+  codeBases: readonly string[],
   index: CodeIndex,
 ): CallSite[] {
   const target = pathSignature(endpoint.path);
   const prefixed = bases.map((base) => pathSignature(normalizePath(`${base}${endpoint.path}`)));
+  const stripped = stripBases(endpoint.path, codeBases);
 
   const sites: CallSite[] = [];
 
@@ -194,10 +208,57 @@ function findCallSites(
           `request path ${entry.literal.value} matches ${endpoint.path} including the server base path`,
         ],
       });
+      continue;
+    }
+
+    if (stripped.includes(entry.signature)) {
+      sites.push({
+        file: entry.file,
+        ...(symbol ? { symbol } : {}),
+        literal: entry.literal,
+        strength: MatchStrength.prefixed,
+        reasons: [
+          `request path ${entry.literal.value} matches ${endpoint.path} with the base path held separately in the code`,
+        ],
+      });
     }
   }
 
   return sites.sort((left, right) => left.file.localeCompare(right.file));
+}
+
+/**
+ * Base paths the code itself uses, read from absolute URL literals.
+ *
+ * A `BASE_URL` of `https://api.test/v1` contributes `/v1`. An origin with no
+ * path contributes nothing, and neither does an interpolated one — a base
+ * assembled at runtime cannot be compared against a spec's static path.
+ */
+function codeBasePaths(index: CodeIndex): string[] {
+  const bases = new Set<string>();
+
+  for (const file of index.files) {
+    for (const literal of file.urlLiterals) {
+      const match = /^https?:\/\/[^/]*(\/.*)$/i.exec(literal.value.trim());
+      const base = match?.[1]?.replace(/\/+$/, '');
+      if (base && base.length > 1 && !base.includes('{')) bases.add(base);
+    }
+  }
+
+  return [...bases];
+}
+
+/** Endpoint paths with a code-side base prefix removed, where one applies. */
+function stripBases(endpointPath: string, codeBases: readonly string[]): string[] {
+  const targets = new Set<string>();
+
+  for (const base of codeBases) {
+    if (!endpointPath.startsWith(`${base}/`)) continue;
+    const remainder = endpointPath.slice(base.length);
+    if (remainder.length > 1) targets.add(pathSignature(normalizePath(remainder)));
+  }
+
+  return [...targets];
 }
 
 /** Path prefixes of the specification's servers, e.g. `/v1`. */

@@ -1,0 +1,33 @@
+{
+  "name": "@aica/agent-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "aica-agent-server": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "clean": "tsc -b tsconfig.build.json --clean",
+    "start": "node ./dist/main.js"
+  },
+  "dependencies": {
+    "@aica/api-engine": "workspace:*",
+    "@aica/api-ir": "workspace:*",
+    "@aica/code-graph": "workspace:*",
+    "@aica/code-intelligence": "workspace:*",
+    "@aica/exec-engine": "workspace:*",
+    "@aica/fs-engine": "workspace:*",
+    "@aica/integration-planner": "workspace:*",
+    "@aica/rpc": "workspace:*",
+    "@aica/schemas": "workspace:*",
+    "@aica/security-engine": "workspace:*",
+    "@aica/shared": "workspace:*",
+    "@aica/validation-engine": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

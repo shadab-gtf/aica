@@ -85,6 +85,7 @@ apps/
 packages/
   shared/             Result/error types, IDs, event contracts, logger, clock. Zero deps.
   schemas/            Zod schemas: config, protocol, events, tool I/O. Single validation source.
+  rpc/                JSON-RPC 2.0 peer + length-prefixed framing. Transport-agnostic.
   security-engine/    Redaction, path policy, command policy, risk classification, approvals, SSRF
   exec-engine/        Policy-gated child-process execution: timeouts, limits, env filtering
   fs-engine/          Workspace filesystem + transactional patch application
@@ -246,8 +247,9 @@ that cannot be validated is stated as unvalidated rather than assumed.
 
 - **Local single-process server over microservices** — §55/§62 explicitly reject unnecessary
   infrastructure. Interfaces are transport-agnostic so extraction stays possible.
-- **ESM throughout, extension bundled to CJS by esbuild** — Node 22 is ESM-native; the VS Code
-  extension host expects CommonJS, and bundling is the standard reconciliation.
+- **ESM throughout, shipped artifacts bundled to CJS by esbuild** — Node 22 is ESM-native; the
+  VS Code extension host expects CommonJS, and bundling is the standard reconciliation. The agent
+  server is bundled to CJS as well; §9.8 records why.
 - **Zod as the single schema authority** — one definition drives runtime validation, static types,
   and the JSON Schema shown to the model. Eliminates contract drift.
 - **Anchored edits over unified diff as the primary patch format** — hash preconditions make
@@ -424,3 +426,47 @@ Full detail in `CODING-AGENTS.md`.
   capability with no use here and a real blast radius.
 - **Identifiers are validated before they reach a URL**, and the key travels in
   `X-API-Key` only — never a query parameter.
+
+### 9.8 The editor client and the agent server (Phase 6)
+
+- **A separate `rpc` package, not transport code inside an app.** The framing
+  and the JSON-RPC peer have two consumers — the server and the extension — and
+  the same class runs on both ends. Putting it in either app would have made one
+  app depend on the other; putting it in `shared` would have contradicted that
+  package's "zero dependencies, no I/O" remit.
+- **JSON-RPC rather than a request/response protocol, because the direction
+  matters.** The server needs to call _into_ the editor: SecretStorage is
+  reachable only from the extension host, and so is the user. A protocol where
+  only the client may ask questions turns both of those into polling.
+- **The protocol is Zod, and the schema that describes a call is the schema that
+  guards it** — the same rule as the tool registry (§5.5). Registration takes a
+  contract, so there is no way to bind a handler without also binding its
+  validation. Results are validated too: object schemas strip unknown keys, so
+  an internal record returned by mistake loses everything the contract does not
+  name.
+- **Event payloads are deliberately not re-derived in Zod.** `shared` owns the
+  event union as a TypeScript discriminated type; a second definition could
+  disagree with the first. Events cross the wire in a validated envelope and are
+  narrowed on `type` against that one definition.
+- **Capabilities are advertised, and the server asks for nothing that was not
+  offered.** A server calling a method the client never registered gets a
+  timeout, which is a far worse failure than a clean refusal.
+- **The extension holds the keychain; the server still holds the policy.** A
+  secret crosses one local pipe between two processes owned by the same user and
+  is registered with the redactor the moment it arrives. §3's trust boundary is
+  unchanged: the server decides _whether_ a credential is needed, and only asks
+  the process that has hands to fetch it.
+- **A missing secret is `found: false`, never an error.** An error would carry
+  the name of what was missing into a log.
+- **Anything that decides what to show lives outside the `vscode` imports.**
+  Tree shapes, diagnostic ranges, and status text are pure functions, so the
+  decisions that matter — an unlocated finding is not anchored to line 1, a
+  skipped check is not reported as passed, an empty view says why it is empty —
+  are testable without an editor running.
+- **Both bundles are CommonJS.** The extension host requires it, and so, in
+  practice, does the server: the indexer depends on `typescript`, which reaches
+  for `require`, `__filename`, and `__dirname` at runtime. Bundled into ESM
+  those become shims that throw on the first indexing call rather than at build
+  time. Nothing in the server's own source uses `import.meta`, so the conversion
+  costs nothing. This supersedes the ESM half of the bundling decision recorded
+  above.

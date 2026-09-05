@@ -14,6 +14,9 @@ importers:
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.1
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       eslint:
         specifier: ^9.39.0
         version: 9.39.5
@@ -29,6 +32,70 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)(yaml@2.9.0)
+
+  apps/agent-server:
+    dependencies:
+      '@aica/api-engine':
+        specifier: workspace:*
+        version: link:../../packages/api-engine
+      '@aica/api-ir':
+        specifier: workspace:*
+        version: link:../../packages/api-ir
+      '@aica/code-graph':
+        specifier: workspace:*
+        version: link:../../packages/code-graph
+      '@aica/code-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/code-intelligence
+      '@aica/exec-engine':
+        specifier: workspace:*
+        version: link:../../packages/exec-engine
+      '@aica/fs-engine':
+        specifier: workspace:*
+        version: link:../../packages/fs-engine
+      '@aica/integration-planner':
+        specifier: workspace:*
+        version: link:../../packages/integration-planner
+      '@aica/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../../packages/security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@aica/validation-engine':
+        specifier: workspace:*
+        version: link:../../packages/validation-engine
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
+  apps/vscode-extension:
+    dependencies:
+      '@aica/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@aica/agent-server':
+        specifier: workspace:*
+        version: link:../agent-server
+      '@types/vscode':
+        specifier: ~1.96.0
+        version: 1.96.0
 
   fixtures/sample-app: {}
 
@@ -151,6 +218,12 @@ importers:
       '@aica/code-intelligence':
         specifier: workspace:*
         version: link:../code-intelligence
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/rpc:
+    dependencies:
       '@aica/shared':
         specifier: workspace:*
         version: link:../shared
@@ -586,6 +659,9 @@ packages:
 
   '@types/node@22.20.1':
     resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+
+  '@types/vscode@1.96.0':
+    resolution: {integrity: sha512-qvZbSZo+K4ZYmmDuaodMbAa67Pl6VDQzLKFka6rq+3WUTY4Kro7Bwoi0CuZLO/wema0ygcmpwow7zZfPJTs5jg==}
 
   '@typescript-eslint/eslint-plugin@8.69.0':
     resolution: {integrity: sha512-t5jQTKPIgVW1PE6dR6H6Qz5gm8zjMlX5/2gRaOGd9eO6V7J+tQc6iWKukEe7dY8u9HyYasQ0yfF0/FSSTEO2gA==}
@@ -1451,6 +1527,8 @@ snapshots:
   '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/vscode@1.96.0': {}
 
   '@typescript-eslint/eslint-plugin@8.69.0(@typescript-eslint/parser@8.69.0(eslint@9.39.5)(typescript@5.9.3))(eslint@9.39.5)(typescript@5.9.3)':
     dependencies:

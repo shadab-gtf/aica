@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "types": ["node", "vscode"],
+    "paths": {
+      "@aica/agent-server": ["../agent-server/src/index.ts"],
+      "@aica/*": ["../../packages/*/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

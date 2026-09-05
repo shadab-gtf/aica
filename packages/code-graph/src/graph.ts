@@ -336,7 +336,7 @@ export function buildGraph(index: CodeIndex): CodeGraph {
     if (from === to) return;
     if (!nodes.has(from) || !nodes.has(to)) return;
 
-    const key = `${from} ${to} ${kind}`;
+    const key = `${from}\u0000${to}\u0000${kind}`;
     const existing = edges.get(key);
     edges.set(key, { from, to, kind, count: (existing?.count ?? 0) + 1 });
   };

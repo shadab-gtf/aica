@@ -20,7 +20,13 @@ export default defineConfig({
   },
   resolve: {
     // Vitest executes TypeScript sources directly, so workspace package
-    // specifiers resolve to src/ rather than to built dist/ output.
-    alias: [{ find: /^@aica\/([a-z-]+)$/, replacement: `${root}packages/$1/src/index.ts` }],
+    // specifiers resolve to src/ rather than to built dist/ output. The
+    // agent-server entry is listed first because it lives under apps/ — the
+    // extension's protocol test runs a real client against a real server, and
+    // it can only do that if both resolve.
+    alias: [
+      { find: '@aica/agent-server', replacement: `${root}apps/agent-server/src/index.ts` },
+      { find: /^@aica\/([a-z-]+)$/, replacement: `${root}packages/$1/src/index.ts` },
+    ],
   },
 });

@@ -8,6 +8,9 @@
       "path": "packages/schemas/tsconfig.build.json"
     },
     {
+      "path": "packages/rpc/tsconfig.build.json"
+    },
+    {
       "path": "packages/security-engine/tsconfig.build.json"
     },
     {
@@ -45,6 +48,12 @@
     },
     {
       "path": "packages/agent-core/tsconfig.build.json"
+    },
+    {
+      "path": "apps/agent-server/tsconfig.build.json"
+    },
+    {
+      "path": "apps/vscode-extension/tsconfig.build.json"
     }
   ]
 }

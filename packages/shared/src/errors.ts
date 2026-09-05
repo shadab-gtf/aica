@@ -54,6 +54,8 @@ const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   ErrorCode.MODEL_FAILURE,
 ]);
 
+const KNOWN_CODES: ReadonlySet<string> = new Set(Object.values(ErrorCode));
+
 export interface AgentErrorJSON {
   readonly code: ErrorCode;
   readonly message: string;
@@ -100,6 +102,23 @@ export class AgentError extends Error {
     if (Object.keys(this.details).length > 0) json.details = this.details;
     if (this.cause !== undefined) json.cause = describeCause(this.cause);
     return json;
+  }
+
+  /**
+   * Rebuild an error that crossed a transport.
+   *
+   * The counterpart of `toJSON`. An unrecognised code becomes `INTERNAL` rather
+   * than being trusted through: the peer is allowed to be a different version
+   * of this software, and a code we cannot reason about must not be treated as,
+   * say, retryable.
+   */
+  static fromJSON(json: AgentErrorJSON): AgentError {
+    const code = KNOWN_CODES.has(json.code) ? json.code : ErrorCode.INTERNAL;
+    return new AgentError(code, json.message, {
+      ...(json.details ? { details: json.details } : {}),
+      retryable: json.retryable,
+      ...(json.cause !== undefined ? { cause: json.cause } : {}),
+    });
   }
 
   /** Convert an unknown thrown value into an AgentError without losing information. */

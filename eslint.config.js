@@ -37,4 +37,14 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/test/**/*.ts'],
     rules: { 'no-console': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   },
+  {
+    // Build scripts are plain Node programs run from a terminal, not library
+    // code: they have process globals and their output is the point.
+    files: ['**/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', __dirname: 'readonly' },
+      sourceType: 'module',
+    },
+    rules: { 'no-console': 'off' },
+  },
 );

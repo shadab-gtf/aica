@@ -234,6 +234,29 @@ describe('matching endpoints to code', () => {
     const list = matches.find((match) => match.endpoint.id === 'GET /orders');
     expect(list?.callSites[0]?.reasons.join(' ')).toMatch(/matches \/orders/);
   });
+
+  it('matches when the base path is in the spec path and the code holds it separately', () => {
+    // What every cURL-derived spec looks like: the server is the bare origin
+    // and the version prefix is part of the path. The fixture keeps that prefix
+    // in its BASE_URL constant and writes only `/orders`, so a matcher that
+    // compares the two literally finds nothing and reports an endpoint the
+    // codebase already calls as unimplemented.
+    const derived = unwrap(parseApiSource('curl https://api.example.com/v1/orders'));
+    const matches = matchEndpoints(derived, code);
+
+    expect(matches[0]?.endpoint.path).toBe('/v1/orders');
+    expect(matches[0]?.implemented).toBe(true);
+    expect(matches[0]?.callSites.map((site) => site.file)).toContain('src/api/client.ts');
+    expect(matches[0]?.callSites[0]?.reasons.join(' ')).toMatch(/base path held separately/);
+  });
+
+  it('does not match a path that merely shares a prefix', () => {
+    const derived = unwrap(parseApiSource('curl https://api.example.com/v1/invoices'));
+    const matches = matchEndpoints(derived, code);
+
+    expect(matches[0]?.implemented).toBe(false);
+    expect(matches[0]?.callSites).toEqual([]);
+  });
 });
 
 describe('observing the repository conventions', () => {
