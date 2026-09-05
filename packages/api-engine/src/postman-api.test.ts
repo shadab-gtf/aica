@@ -10,6 +10,11 @@ import { PostmanApiClient } from './postman-api.js';
  * suite runs offline and a real key cannot make it pass by accident.
  */
 
+// Deliberately not shaped like a real Postman key. A realistic-looking
+// fixture trips GitHub's push protection on every push, and a repository
+// that cries wolf teaches everyone to click through the warning. Nothing
+// here depends on the format: the redactor scrubs it because the resolver
+// registered the value, not because it matched a pattern.
 const API_KEY = 'postman-test-key-0000000000000000';
 
 interface Call {
