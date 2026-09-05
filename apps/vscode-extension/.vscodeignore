@@ -1,0 +1,43 @@
+# What stays out of the .vsix.
+#
+# An extension package is downloaded by every user on every update, so the rule
+# is that only what runs at runtime ships. Everything here is either rebuilt
+# from source, only useful while developing, or — in the case of node_modules —
+# already inlined by the bundler and would otherwise be shipped twice.
+
+# TypeScript sources and their configuration. The bundle is what runs.
+src/**
+scripts/**
+tsconfig*.json
+*.tsbuildinfo
+
+# Build intermediates. `dist/extension.cjs` and `dist/server/` are what ship;
+# the tsc output beside them is not loaded by anything.
+dist/*.js
+dist/*.d.ts
+dist/*.js.map
+dist/*.d.ts.map
+dist/model/**
+dist/.tsbuildinfo
+
+# Source maps. Useful for a stack trace, and roughly as large as the code they
+# describe — 15MB of them on a 10MB bundle. Left out; a real diagnosis happens
+# against a checkout, not against a published package.
+**/*.map
+
+# End-to-end and unit tests.
+**/*.test.ts
+e2e/**
+playwright.config.ts
+test-results/**
+playwright-report/**
+
+# Everything the bundler has already inlined.
+node_modules/**
+
+# Editor and tooling noise.
+.vscode/**
+.vscode-test/**
+.gitignore
+.eslintrc*
+eslint.config.*

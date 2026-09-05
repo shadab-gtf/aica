@@ -3,9 +3,8 @@
   "displayName": "AICA — API Integration & Code Intelligence",
   "description": "Import an API, index the codebase, plan the integration, and validate the result.",
   "version": "0.1.0",
-  "private": true,
   "publisher": "aica",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.96.0",
     "node": ">=22.0.0"
@@ -24,7 +23,9 @@
     "build": "tsc -b tsconfig.build.json",
     "clean": "tsc -b tsconfig.build.json --clean",
     "bundle": "node ./scripts/bundle.mjs",
-    "package": "pnpm run build && pnpm run bundle"
+    "package": "pnpm run build && pnpm run icon && pnpm run bundle && vsce package --no-dependencies",
+    "icon": "node ./scripts/make-icon.mjs",
+    "publish:marketplace": "vsce publish --no-dependencies"
   },
   "contributes": {
     "viewsContainers": {
@@ -243,12 +244,35 @@
   },
   "devDependencies": {
     "@aica/agent-server": "workspace:*",
-    "@types/vscode": "~1.96.0"
+    "@types/vscode": "~1.96.0",
+    "@vscode/vsce": "^3.6.0"
   },
   "dependencies": {
     "@aica/rpc": "workspace:*",
     "@aica/schemas": "workspace:*",
     "@aica/shared": "workspace:*",
     "zod": "^3.25.76"
-  }
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#101317",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shadab-gtf/koie.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shadab-gtf/koie/issues"
+  },
+  "homepage": "https://github.com/shadab-gtf/koie#readme",
+  "keywords": [
+    "api",
+    "openapi",
+    "postman",
+    "code-intelligence",
+    "agent",
+    "refactoring",
+    "mcp"
+  ]
 }
