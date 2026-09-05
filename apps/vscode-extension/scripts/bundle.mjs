@@ -27,6 +27,7 @@
  */
 
 import { build } from 'esbuild';
+import { cp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -64,4 +65,11 @@ await build({
   external: [],
 });
 
-console.log('bundled extension.cjs and server/main.cjs');
+// Skills are markdown, not code, so the bundler cannot inline them — and they
+// have to travel with the server, which looks for them beside its own entry
+// point. Without this an installed extension has no guidance at all.
+const shippedSkills = path.join(root, 'dist/server/skills');
+await rm(shippedSkills, { recursive: true, force: true });
+await cp(path.join(repoRoot, 'skills'), shippedSkills, { recursive: true });
+
+console.log('bundled extension.cjs, server/main.cjs, and the shipped skills');

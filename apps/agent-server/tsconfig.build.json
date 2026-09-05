@@ -52,6 +52,9 @@
     },
     {
       "path": "../../packages/mcp-engine/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/skill-engine/tsconfig.build.json"
     }
   ]
 }

@@ -29,6 +29,7 @@
     "@aica/schemas": "workspace:*",
     "@aica/security-engine": "workspace:*",
     "@aica/shared": "workspace:*",
+    "@aica/skill-engine": "workspace:*",
     "@aica/tool-registry": "workspace:*",
     "@aica/validation-engine": "workspace:*",
     "@supabase/supabase-js": "^2.115.0",

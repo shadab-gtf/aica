@@ -196,6 +196,55 @@ describe('a run that proposes a change', () => {
     harness.dispose();
   });
 
+  it('loads the guidance the repository calls for, and says which', async () => {
+    // The fixture depends on React, so the React skill applies; nothing in the
+    // request mentions it.
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'target', type: 'module', dependencies: { react: '^19.0.0' } }),
+      'utf8',
+    );
+
+    const provider = scripted([{ text: 'Understood.', stopReason: 'end_turn' }]);
+    const harness = connect({ provider });
+    const projectId = await harness.open();
+
+    await harness.call(clientMethods.startRun.method, {
+      projectId,
+      task: 'update the order list',
+    });
+
+    const selected = harness.events.find((event) => event.type === 'SKILLS_SELECTED');
+    expect((selected?.payload as { skills: string[] } | undefined)?.skills).toContain('react');
+
+    // The guidance reached the model, framed as guidance.
+    const system = provider.requests[0]?.messages.find((message) => message.role === 'system');
+    expect(String(system?.content)).toContain('guidance, not permission');
+
+    harness.dispose();
+  });
+
+  it('does not load guidance for a framework the project does not use', async () => {
+    const provider = scripted([{ text: 'Understood.', stopReason: 'end_turn' }]);
+    const harness = connect({ provider });
+    const projectId = await harness.open();
+
+    // The word is in the request; the repository says otherwise, and the
+    // repository wins.
+    await harness.call(clientMethods.startRun.method, {
+      projectId,
+      task: 'render a react component for the order list',
+    });
+
+    const selected = harness.events.find((event) => event.type === 'SKILLS_SELECTED');
+    expect((selected?.payload as { skills: string[] } | undefined)?.skills ?? []).not.toContain(
+      'react',
+    );
+
+    harness.dispose();
+  });
+
   it('refuses to run before the project is indexed', async () => {
     const harness = connect({ provider: scripted([]) });
 

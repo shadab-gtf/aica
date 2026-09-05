@@ -88,6 +88,7 @@ export class ProjectSession {
   private postman: PostmanApiClient | undefined;
 
   private storeInstance: Store = new MemoryStore();
+  private dependencyNames: readonly string[] = [];
   private index: CodeIndex | undefined;
   private graph: CodeGraph | undefined;
   private endpointIndex: EndpointIndex | undefined;
@@ -205,6 +206,8 @@ export class ProjectSession {
         : {}),
     });
 
+    this.dependencyNames = await readDependencyNames(this.root);
+
     await this.openStore();
 
     const saved = await this.storeInstance.saveProject({
@@ -282,6 +285,17 @@ export class ProjectSession {
 
   get store(): Store {
     return this.storeInstance;
+  }
+
+  /**
+   * Package names this project depends on.
+   *
+   * Read once at open, from `package.json`. This is the strongest signal for
+   * choosing guidance: a React skill is relevant to a repository that depends
+   * on React and irrelevant to one that does not, whatever the request said.
+   */
+  get dependencies(): readonly string[] {
+    return this.dependencyNames;
   }
 
   get configuration(): AgentConfig {
@@ -537,6 +551,40 @@ function compilePatterns(sources: readonly string[]): {
   }
 
   return { patterns, invalid };
+}
+
+/**
+ * Dependency names from `package.json`.
+ *
+ * Names only, and every kind of dependency — a devDependency on `vitest` says
+ * as much about how to write a test here as a runtime one. A malformed or
+ * missing file yields an empty list rather than an error: not knowing the stack
+ * degrades skill selection, it does not stop the project opening.
+ */
+async function readDependencyNames(root: string): Promise<string[]> {
+  const raw = await readOptional(path.join(root, 'package.json'));
+  if (raw === undefined) return [];
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const names = new Set<string>();
+
+    for (const field of [
+      'dependencies',
+      'devDependencies',
+      'peerDependencies',
+      'optionalDependencies',
+    ]) {
+      const section = parsed[field];
+      if (typeof section === 'object' && section !== null) {
+        for (const name of Object.keys(section)) names.add(name);
+      }
+    }
+
+    return [...names].sort();
+  } catch {
+    return [];
+  }
 }
 
 async function readOptional(file: string): Promise<string | undefined> {

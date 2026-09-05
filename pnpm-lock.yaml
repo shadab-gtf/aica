@@ -77,6 +77,9 @@ importers:
       '@aica/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@aica/skill-engine':
+        specifier: workspace:*
+        version: link:../../packages/skill-engine
       '@aica/tool-registry':
         specifier: workspace:*
         version: link:../../packages/tool-registry
@@ -283,6 +286,24 @@ importers:
         version: 7.0.8
 
   packages/shared: {}
+
+  packages/skill-engine:
+    dependencies:
+      '@aica/fs-engine':
+        specifier: workspace:*
+        version: link:../fs-engine
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/tool-registry:
     dependencies:

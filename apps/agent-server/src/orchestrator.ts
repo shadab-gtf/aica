@@ -25,6 +25,8 @@ import type { AIProvider, Message } from '@aica/agent-core';
 import { AgentRuntime, OpenRouterProvider, ScriptedProvider } from '@aica/agent-core';
 import { buildPlan, parseIntent, renderBrief } from '@aica/integration-planner';
 import { McpRegistry } from '@aica/mcp-engine';
+import { SkillRegistry, renderSkills, resolveShippedSkillsDirectory } from '@aica/skill-engine';
+import type { SelectionResult } from '@aica/skill-engine';
 import type { EventBus, Id, Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, RunEmitter, err, newId, ok, silentLogger } from '@aica/shared';
 import { ApprovalGate } from '@aica/security-engine';
@@ -64,6 +66,8 @@ export interface OrchestratorOptions {
   readonly askApproval?: ApprovalAsker;
   /** Injected in tests so a run needs neither a key nor a network. */
   readonly provider?: AIProvider;
+  /** Where the shipped skills live. Discovered when absent. */
+  readonly skillsDirectory?: string;
 }
 
 /**
@@ -80,6 +84,7 @@ export class Orchestrator {
   private readonly logger: Logger;
   private readonly running = new Map<string, AbortController>();
   private mcp: McpRegistry | undefined;
+  private skills: SkillRegistry | undefined;
 
   constructor(private readonly options: OrchestratorOptions) {
     this.logger = (options.logger ?? silentLogger).child('run');
@@ -323,11 +328,28 @@ export class Orchestrator {
 
     const runtime = new AgentRuntime({ provider, registry, dispatcher, logger: this.logger });
 
+    // Guidance is chosen from what the repository contains and what the plan
+    // expects to touch, not from what the request happened to say.
+    const guidance = await this.selectSkills({
+      task: plan.intent.action,
+      text: request.task,
+      extensions: [...new Set(plan.targetFiles.map((file) => file.slice(file.lastIndexOf('.'))))],
+    });
+
+    if (guidance.selected.length > 0) {
+      emitter.emit('SKILLS_SELECTED', {
+        skills: guidance.selected.map((entry) => entry.skill.manifest.name),
+        reason: guidance.selected
+          .map((entry) => `${entry.skill.manifest.name}: ${entry.evidence[0]?.detail ?? ''}`)
+          .join('; '),
+      });
+    }
+
     const before = this.patches.list().length;
     const outcome = await runtime.run({
       runId,
       projectId: session.projectId,
-      systemPrompt: systemPrompt(session, canApply),
+      systemPrompt: systemPrompt(session, canApply, guidance),
       task: renderBrief(plan),
       emitter,
       signal: controller.signal,
@@ -363,6 +385,7 @@ export class Orchestrator {
         provider,
         controller,
         history: outcome.value.messages,
+        guidance,
       });
       validationPassed = repaired;
     }
@@ -398,6 +421,55 @@ export class Orchestrator {
       ...(validationPassed !== undefined ? { validationPassed } : {}),
       stoppedBecause: outcome.value.stoppedBecause,
     });
+  }
+
+  /**
+   * Choose the guidance for this run.
+   *
+   * Shipped skills first, then the project's own, so a project skill of the
+   * same name replaces rather than competes with the general one. Loading is
+   * budgeted: skills are prompt tokens, and a dozen of them produce a prompt in
+   * which none of the guidance is followed.
+   */
+  private async selectSkills(context: {
+    task: string;
+    text: string;
+    extensions: readonly string[];
+  }): Promise<SelectionResult> {
+    const session = this.options.session;
+
+    const registry = new SkillRegistry({ logger: this.logger });
+    this.skills = registry;
+
+    // Shipped skills live where the agent is installed, which is outside the
+    // project — so they are read directly rather than through the workspace
+    // reader, whose refusal of that path is correct behaviour.
+    const shipped = await resolveShippedSkillsDirectory({
+      ...(this.options.skillsDirectory
+        ? { env: { AICA_SKILLS_DIR: this.options.skillsDirectory } }
+        : {}),
+      ...(process.argv[1] ? { entryPoint: process.argv[1] } : {}),
+    });
+    if (shipped) await registry.loadShipped(shipped);
+
+    // A project's own skills come from inside it, where the path policy applies.
+    await registry.loadFrom(session.requireReader(), '.aica/skills', 'project');
+
+    const selection = registry.select({
+      task: context.task,
+      text: context.text,
+      dependencies: session.dependencies,
+      extensions: context.extensions,
+      requested: session.configuration.skills,
+    });
+
+    for (const omitted of selection.omitted) {
+      // Said out loud. "Why did it not follow the React guidance" deserves an
+      // answer, and "it did not fit" is one.
+      this.logger.info('skill not loaded', { skill: omitted.name, reason: omitted.reason });
+    }
+
+    return selection;
   }
 
   /**
@@ -468,6 +540,7 @@ export class Orchestrator {
     provider: AIProvider;
     controller: AbortController;
     history: readonly Message[];
+    guidance: SelectionResult;
   }): Promise<boolean> {
     const session = this.options.session;
     const pipeline = session.validation();
@@ -499,7 +572,7 @@ export class Orchestrator {
         const repaired = await context.runtime.run({
           runId: context.runId,
           projectId: session.projectId,
-          systemPrompt: systemPrompt(session, true),
+          systemPrompt: systemPrompt(session, true, context.guidance),
           task: instruction,
           emitter: context.emitter,
           signal: context.controller.signal,
@@ -625,8 +698,15 @@ export class Orchestrator {
  * given a persona and no boundaries will disable a failing test to make a
  * validation step pass, and has.
  */
-function systemPrompt(session: ProjectSession, canApply: boolean): string {
+function systemPrompt(
+  session: ProjectSession,
+  canApply: boolean,
+  guidance?: SelectionResult,
+): string {
   const conventions = session.configuration.conventions;
+  // Guidance comes after the rules, and says so: a skill is a file a project
+  // can ship, and "the skill told me to" must not be an available excuse.
+  const skills = guidance ? renderSkills(guidance) : '';
 
   return [
     'You are a careful engineer working inside an existing codebase.',
@@ -646,5 +726,6 @@ function systemPrompt(session: ProjectSession, canApply: boolean): string {
     ...(conventions.length > 0
       ? ['', 'Project conventions:', ...conventions.map((entry) => `- ${entry}`)]
       : []),
+    ...(skills.length > 0 ? ['', skills] : []),
   ].join('\n');
 }

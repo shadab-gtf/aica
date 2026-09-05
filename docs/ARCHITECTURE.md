@@ -98,7 +98,7 @@ packages/
   integration-planner/ Intent, API<->code matching, plan construction, executor briefs
   coding-agent/       CodingAgentProvider contract, delegation loop, Jules adapter
   code-graph/         Code knowledge graph: nodes, edges, subgraph queries, impact analysis
-  mcp-engine/         MCP client, server/tool discovery, per-tool permission enforcement
+  mcp-engine/         MCP client (stdio), tool discovery, risk classification, permissions
   skill-engine/       Skill registry, task-based selection, scoped loading
   validation-engine/  Typecheck/lint/test/build orchestration, failure diagnosis, bounded repair
   memory/             Scoped memory (global/project/task), secret-free by construction
@@ -516,3 +516,59 @@ Full detail in `CODING-AGENTS.md`.
 - **Persistence never fails a run.** Writes return `Result`, callers log and continue, and the
   store is chosen at open time with a health check so a missing database is a configuration issue
   surfaced once — not a failure discovered halfway through a run.
+
+### 9.10 Model Context Protocol (Phase 7)
+
+- **The codec is injectable rather than the connection duplicated.** MCP frames
+  messages by newline; this system's own transport frames by `Content-Length`.
+  Sharing `RpcConnection` means request correlation, cancellation, timeouts, and
+  "settle everything when the pipe dies" exist once — they are the parts that
+  are easy to get subtly wrong twice.
+- **A server's self-description may raise the risk assigned to a tool, never
+  lower it.** `destructiveHint` is volunteered against the server's own interest
+  and is believed. `readOnlyHint` is a program asserting it is harmless, which is
+  exactly the assertion that cannot be taken on trust, so it buys one step down
+  rather than a free pass. The asymmetry is the difference between evidence and
+  a claim.
+- **Only a person reaches READ_ONLY**, by naming a specific tool in
+  `trustedTools` — deliberately separate from `allowedTools`, because
+  restricting a server to three tools is a scoping decision and not a statement
+  that those three are safe.
+- **Protocol versions are negotiated.** The client proposes the newest revision
+  it knows, accepts an older one the server chooses, and refuses a revision it
+  cannot speak rather than guessing at message shapes.
+- **Tool names are namespaced by server.** Two servers offering `search` would
+  otherwise shadow each other — a silent capability swap — and a prefixed name
+  makes it visible in a timeline and an approval prompt that a call is leaving
+  the system.
+- **A server's output is data.** Its `instructions`, its tool descriptions, and
+  its results are instruction-shaped text from a third-party program. They are
+  shown, and given to the model as documentation; they are never a directive to
+  this system, and the tool wrapper says so where the model can see it.
+- **One broken server does not stop a run.** Servers connect independently and a
+  failure is reported as a finding against that server.
+
+### 9.11 Skills (Phase 8)
+
+- **Selection is deterministic and evidence-ranked.** What the repository
+  depends on outranks the task kind, which outranks the files involved, which
+  outranks words in the request — because a dependency is a fact about the
+  codebase and a word in a sentence is the easiest signal to produce by
+  accident. A skill that names required packages and finds none present is
+  excluded outright, so word matching cannot pull a Vue skill into a React
+  project.
+- **Nothing asks a model which instructions to give itself.** That is a loop
+  with no ground truth in it.
+- **Loading is budgeted, and what did not fit is reported.** Skills are prompt
+  tokens; a dozen of them produce a prompt in which none of the guidance is
+  followed. On a tie the smaller skill wins, because it leaves room for another.
+- **A skill is guidance, never authority.** Its text is rendered under a heading
+  saying it does not override a safety rule or widen a permission. Skills are
+  plain files that a project can ship, so "the skill told me to" must not be an
+  available excuse.
+- **Shipped skills are read from where the agent is installed, not through the
+  workspace reader.** They live outside the project, so the path policy refusing
+  them is correct behaviour; routing them through it would be either broken or a
+  hole in containment. A project's own skills live in `.aica/skills`, inside the
+  project, where the policy does apply — and a project skill of the same name
+  replaces the shipped one, which is what a project skill is for.
