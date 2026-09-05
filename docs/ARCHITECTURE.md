@@ -1,7 +1,7 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phases 0-3 complete except Tree-sitter parsing (gate green: build, typecheck,
-lint, format, 909 tests). Living document; revised at each phase gate.
+**Status:** Phases 0-3 complete (gate green: build, typecheck, lint, format, 909 tests).
+Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
 ---
@@ -93,7 +93,7 @@ packages/
   agent-core/         AIProvider abstraction, providers, agent loop, task router, confidence
   api-ir/             Canonical API intermediate representation (types + invariants)
   api-engine/         OpenAPI/Postman/cURL/doc parsers, endpoint index + search, HTTP executor
-  code-intelligence/  AST parsing (TS Compiler API, Tree-sitter), symbol/reference indexing
+  code-intelligence/  AST parsing (TS Compiler API), symbol/reference indexing, retrieval
   code-graph/         Code knowledge graph: nodes, edges, subgraph queries, impact analysis
   mcp-engine/         MCP client, server/tool discovery, per-tool permission enforcement
   skill-engine/       Skill registry, task-based selection, scoped loading
@@ -330,6 +330,14 @@ that cannot be validated is stated as unvalidated rather than assumed.
 - **Blind spots are reported.** Dynamic dispatch, reflection, and unresolvable
   members produce no edges, so an impact report says where the analysis could
   not see rather than implying completeness.
+- **Tree-sitter is deferred, deliberately.** Earlier drafts of this document
+  listed it alongside the TypeScript compiler API. It buys parsing for languages
+  other than TS/JS, which nothing in the system consumes yet — the shipped
+  skills target api-integration, React, Next.js and TypeScript — and it costs a
+  multi-megabyte `.wasm` grammar committed per language. It is dropped from the
+  package description rather than left there as an unmet promise; when a
+  non-TS/JS target appears, it returns as scoped work.
+
 - **Retrieval enforces its own budget.** Sections 51 and 63 forbid dumping a
   repository into a prompt; the byte and item caps live inside `retrieve`, not
   in its callers, because the failure mode is a caller that means well.
