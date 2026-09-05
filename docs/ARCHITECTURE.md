@@ -1,6 +1,6 @@
 # API Integration & Code Intelligence Agent — Architecture
 
-**Status:** Phases 0-4 complete (gate green: build, typecheck, lint, format, 1104 tests).
+**Status:** Phases 0-5 complete (gate green: build, typecheck, lint, format, 1194 tests).
 Living document; revised at each phase gate.
 **Repository:** greenfield monorepo, `pnpm` workspaces, TypeScript, Node >= 22.
 
@@ -99,7 +99,7 @@ packages/
   code-graph/         Code knowledge graph: nodes, edges, subgraph queries, impact analysis
   mcp-engine/         MCP client, server/tool discovery, per-tool permission enforcement
   skill-engine/       Skill registry, task-based selection, scoped loading
-  validation-engine/  Typecheck/lint/test/build/contract-test orchestration, failure diagnosis
+  validation-engine/  Typecheck/lint/test/build orchestration, failure diagnosis, bounded repair
   memory/             Scoped memory (global/project/task), secret-free by construction
 
 skills/               Shipped skill packages (api-integration, react, nextjs, typescript, ...)
@@ -387,3 +387,40 @@ Full detail in `CODING-AGENTS.md`.
   ambiguous timeout would start a second agent on the same repository.
 - **Every loop is bounded**, and all three separately: polls, wall-clock, and
   repair attempts.
+
+### 9.6 Validation and repair (Phase 5)
+
+- **Checks run in dependency order and stop at the first failure.** A type error
+  makes every later check meaningless — the tests that "fail" are failing
+  because nothing compiled. Reporting forty test failures caused by one missing
+  property sends an agent chasing symptoms.
+- **A check that cannot run has not passed.** An unconfigured or unresolvable
+  command is recorded as skipped with a reason, and a pipeline where nothing ran
+  does not report success.
+- **Parsers never invent a location and never drop output.** A line without
+  `file:line` yields a finding with no location; an unrecognized format yields
+  the tail of the output verbatim. A failure with nothing to act on is the worst
+  thing the loop can produce.
+- **Diagnosis groups findings by shared cause and ranks them.** One missing
+  property produces an error at every call site; the repair loop is sent the
+  group that accounts for most of the failure, not the cascade.
+- **Some failures are not repairable and are not attempted.** A timeout or a
+  missing binary cannot be fixed by editing source, and trying spends an attempt
+  from a small budget.
+- **Repair requires progress.** An attempt that does not change the failures
+  ends the loop; one that makes things worse ends it and says so, so the change
+  can be reverted rather than dug into.
+
+### 9.7 Live API sources (Phase 5)
+
+- **Fetching and parsing are separate.** `PostmanApiClient` is a transport;
+  `parsePostman` — built in Phase 2 and already tested — does the normalizing.
+  A second normalizer would be duplicate architecture whose halves drift.
+- **Every source reaches the same IR.** OpenAPI, Swagger, Postman file, Postman
+  API, cURL, and documentation all produce an `ApiSpec`, and nothing downstream
+  can tell which one it came from beyond `source.format`.
+- **The client is read-only.** This system imports API definitions; it does not
+  manage a Postman account. A client that could delete a collection would be a
+  capability with no use here and a real blast radius.
+- **Identifiers are validated before they reach a URL**, and the key travels in
+  `X-API-Key` only — never a query parameter.

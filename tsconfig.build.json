@@ -20,6 +20,9 @@
       "path": "packages/exec-engine/tsconfig.build.json"
     },
     {
+      "path": "packages/validation-engine/tsconfig.build.json"
+    },
+    {
       "path": "packages/fs-engine/tsconfig.build.json"
     },
     {

@@ -2,6 +2,7 @@ export * from './json.js';
 export * from './infer.js';
 export * from './openapi.js';
 export * from './postman.js';
+export * from './postman-api.js';
 export * from './curl.js';
 export * from './source.js';
 export * from './catalog.js';

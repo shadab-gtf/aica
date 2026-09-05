@@ -193,6 +193,21 @@ importers:
         specifier: ^3.24.6
         version: 3.25.2(zod@3.25.76)
 
+  packages/validation-engine:
+    dependencies:
+      '@aica/exec-engine':
+        specifier: workspace:*
+        version: link:../exec-engine
+      '@aica/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@aica/security-engine':
+        specifier: workspace:*
+        version: link:../security-engine
+      '@aica/shared':
+        specifier: workspace:*
+        version: link:../shared
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.2':

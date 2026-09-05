@@ -110,7 +110,21 @@ export const mcpServerConfigSchema = z.object({
 export const apiSourceConfigSchema = z.object({
   name: z.string().min(1),
   format: z
-    .enum(['openapi', 'swagger', 'postman', 'curl', 'json', 'yaml', 'markdown', 'html', 'url'])
+    .enum([
+      'openapi',
+      'swagger',
+      'postman',
+      // A collection fetched live from the Postman API rather than read from a
+      // file. It reaches the same IR through the same parser; only the
+      // transport differs.
+      'postman-api',
+      'curl',
+      'json',
+      'yaml',
+      'markdown',
+      'html',
+      'url',
+    ])
     .optional(),
   /** Path inside the project, or a URL. */
   source: z.string().min(1),
@@ -118,6 +132,28 @@ export const apiSourceConfigSchema = z.object({
   /** Per-environment base URLs. */
   environments: z.record(targetEnvironmentSchema, z.string().url()).default({}),
   authRef: secretReferenceSchema.optional(),
+});
+
+/**
+ * Connecting to a Postman account.
+ *
+ * The key is a reference, resolved at use. In the VS Code extension it comes
+ * from SecretStorage through the resolver's keychain provider, so the value
+ * never lives in a settings file: `keychain:postman`.
+ */
+export const postmanConfigSchema = z.object({
+  apiKeyRef: secretReferenceSchema.optional(),
+  /** Workspace the user selected, so the picker can start where they left off. */
+  workspaceId: z.string().min(1).optional(),
+  /** Collections to import, by uid. */
+  collectionUids: z.array(z.string().min(1)).default([]),
+  /** How long a fetched workspace or collection stays fresh. */
+  cacheTtlMs: z
+    .number()
+    .int()
+    .min(0)
+    .default(5 * 60 * 1000),
+  requestTimeoutMs: z.number().int().positive().default(20_000),
 });
 
 export const privacyConfigSchema = z.object({
@@ -181,6 +217,7 @@ export const agentConfigSchema = z.object({
   mcpServers: z.array(mcpServerConfigSchema).default([]),
   codingAgent: codingAgentConfigSchema.default({}),
   apis: z.array(apiSourceConfigSchema).default([]),
+  postman: postmanConfigSchema.default({}),
   /** Skills enabled for this project; empty means automatic selection. */
   skills: z.array(z.string()).default([]),
   /** Project conventions the agent must respect, in plain language. */
@@ -197,6 +234,7 @@ export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
 export type CodingAgentKind = z.infer<typeof codingAgentKindSchema>;
 export type CodingAgentConfig = z.infer<typeof codingAgentConfigSchema>;
 export type ApiSourceConfig = z.infer<typeof apiSourceConfigSchema>;
+export type PostmanConfig = z.infer<typeof postmanConfigSchema>;
 export type PrivacyConfig = z.infer<typeof privacyConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
