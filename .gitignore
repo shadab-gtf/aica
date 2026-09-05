@@ -27,3 +27,8 @@ coverage/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# next / playwright build output
+.next/
+playwright-report/
+test-results/

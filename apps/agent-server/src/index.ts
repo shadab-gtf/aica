@@ -1,5 +1,6 @@
 export * from './project.js';
 export * from './gateway.js';
+export * from './http.js';
 export * from './orchestrator.js';
 export * from './server.js';
 export * from './summaries.js';

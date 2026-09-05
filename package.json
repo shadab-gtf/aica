@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "build:clean": "tsc -b tsconfig.build.json --clean",
-    "typecheck": "tsc -p tsconfig.check.json",
+    "typecheck": "tsc -p tsconfig.check.json && tsc -p apps/web/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -24,7 +24,9 @@
     "db:stop": "supabase stop",
     "db:status": "supabase status",
     "db:reset": "supabase db reset",
-    "db:push": "supabase db push --local"
+    "db:push": "supabase db push --local",
+    "build:web": "pnpm --filter aica-web build",
+    "e2e": "pnpm --filter aica-web e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

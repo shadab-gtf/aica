@@ -11,6 +11,9 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '**/*.tsbuildinfo',
+      '**/.next/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
       // Fixtures stand in for a user's repository. They are inputs to the
       // indexer, not code this project maintains, and holding them to our lint
       // rules would stop them representing the code we actually have to handle.
@@ -20,7 +23,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',
@@ -34,15 +37,26 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts', '**/test/**/*.ts'],
+    files: ['**/*.test.ts', '**/test/**/*.ts', '**/e2e/**/*.ts'],
     rules: { 'no-console': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   },
   {
-    // Build scripts are plain Node programs run from a terminal, not library
-    // code: they have process globals and their output is the point.
-    files: ['**/scripts/**/*.mjs'],
+    // Plain Node programs run from a terminal, not library code: build scripts
+    // and test harnesses have process globals, and their output is the point.
+    files: ['**/scripts/**/*.mjs', '**/e2e/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', __dirname: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        __dirname: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
+      },
       sourceType: 'module',
     },
     rules: { 'no-console': 'off' },

@@ -92,6 +92,11 @@ export class AgentServer {
     return this.events;
   }
 
+  /** The method table, so a second transport can reach the same handlers. */
+  get methodTable(): Gateway {
+    return this.gateway;
+  }
+
   private registerHandlers(): void {
     const g = this.gateway;
 
@@ -136,6 +141,10 @@ export class AgentServer {
       this.projects.set(session.projectId, session);
       return ok(toProjectSummary(session));
     });
+
+    g.register(clientMethods.listProjects, async () =>
+      ok({ projects: [...this.projects.values()].map(toProjectSummary) }),
+    );
 
     g.register(clientMethods.projectStatus, async (params) => {
       const session = this.project(params.projectId);

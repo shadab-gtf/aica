@@ -12,5 +12,6 @@
     },
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"]
+  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
+  "exclude": ["apps/web/**"]
 }

@@ -332,6 +332,19 @@ export const clientMethods = {
     projectSummarySchema,
   ),
 
+  /**
+   * Every project this server has open.
+   *
+   * The dashboard is started separately from the editor, so it has no way to
+   * know a project id. Making it ask for one in configuration would mean
+   * pasting a generated identifier into an environment variable to see a page.
+   */
+  listProjects: method(
+    'project/list',
+    z.object({}).default({}),
+    z.object({ projects: z.array(projectSummarySchema) }),
+  ),
+
   projectStatus: method(
     'project/status',
     projectIdParam,

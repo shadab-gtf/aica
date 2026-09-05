@@ -1,8 +1,8 @@
 /**
  * The method table.
  *
- * Every call arrives here as unvalidated JSON from another process and leaves
- * as a validated, typed object — or as an error that names the offending field.
+ * Every call arrives here as unvalidated JSON from somewhere else and leaves as
+ * a validated, typed object — or as an error that names the offending field.
  * Registration takes the contract from `@aica/schemas`, so a handler cannot be
  * bound to a method without also binding its schema; there is no path that
  * skips validation because there is no `register(name, handler)` overload.
@@ -12,31 +12,49 @@
  * back by mistake loses everything the contract does not name. That turns
  * "don't leak internal state to the UI" from a review comment into a property
  * of the transport.
+ *
+ * **The table holds handlers; it does not hold a connection.** §3 makes the
+ * gateway the only layer that knows about transports, which cuts both ways: the
+ * editor speaks JSON-RPC over a pipe and the dashboard speaks HTTP, and both
+ * reach the same methods with the same validation and the same policy. A
+ * gateway welded to one connection would have meant a second, subtly different
+ * table for the second client.
  */
 
-import type { MethodContract } from '@aica/schemas';
 import type { RequestContext, RpcConnection } from '@aica/rpc';
+import type { MethodContract } from '@aica/schemas';
 import type { Logger, Result } from '@aica/shared';
 import { AgentError, ErrorCode, err, ok, silentLogger } from '@aica/shared';
 import type { z } from 'zod';
 
 export type Handler<P, R> = (params: P, context: RequestContext) => Promise<Result<R>>;
 
+/** A registered method, ready to be called by any transport. */
+type Dispatchable = (params: unknown, context: RequestContext) => Promise<Result<unknown>>;
+
 export interface GatewayOptions {
-  readonly connection: RpcConnection;
   readonly logger?: Logger;
+  /**
+   * Bound at construction when the server has a pipe. The HTTP transport needs
+   * no connection: it calls `dispatch` directly.
+   */
+  readonly connection?: RpcConnection;
 }
 
 export class Gateway {
   private readonly logger: Logger;
-  private readonly registered: string[] = [];
+  private readonly handlers = new Map<string, Dispatchable>();
 
-  constructor(private readonly options: GatewayOptions) {
+  constructor(private readonly options: GatewayOptions = {}) {
     this.logger = (options.logger ?? silentLogger).child('gateway');
   }
 
   get methods(): readonly string[] {
-    return [...this.registered].sort();
+    return [...this.handlers.keys()].sort();
+  }
+
+  has(method: string): boolean {
+    return this.handlers.has(method);
   }
 
   /** Bind one contract to its implementation. */
@@ -44,9 +62,7 @@ export class Gateway {
     contract: MethodContract<P, R>,
     handler: Handler<z.infer<P>, z.infer<R>>,
   ): void {
-    this.registered.push(contract.method);
-
-    this.options.connection.onRequest(contract.method, async (raw, context) => {
+    const dispatchable: Dispatchable = async (raw, context) => {
       const params = contract.params.safeParse(raw ?? {});
       if (!params.success) {
         return err(invalidParams(contract.method, params.error));
@@ -59,10 +75,7 @@ export class Gateway {
         // Logged at debug: a failed call is usually the user asking for
         // something that is not there, not a server problem. The client gets
         // the structured error either way.
-        this.logger.debug('call failed', {
-          method: contract.method,
-          code: result.error.code,
-        });
+        this.logger.debug('call failed', { method: contract.method, code: result.error.code });
         return result;
       }
 
@@ -90,7 +103,33 @@ export class Gateway {
       });
 
       return ok(validated.data as unknown);
-    });
+    };
+
+    this.handlers.set(contract.method, dispatchable);
+    this.options.connection?.onRequest(contract.method, dispatchable);
+  }
+
+  /**
+   * Call a method directly.
+   *
+   * The path the HTTP transport takes. Identical validation, identical policy,
+   * identical result stripping — the transport decides how a request arrives
+   * and nothing else.
+   */
+  async dispatch(
+    method: string,
+    params: unknown,
+    context: RequestContext,
+  ): Promise<Result<unknown>> {
+    const handler = this.handlers.get(method);
+    if (!handler) {
+      return err(
+        new AgentError(ErrorCode.UNSUPPORTED, `Unknown method "${method}".`, {
+          details: { method },
+        }),
+      );
+    }
+    return handler(params, context);
   }
 }
 

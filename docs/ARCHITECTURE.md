@@ -79,7 +79,7 @@ server decides. No security decision is made in a UI, because a UI can be bypass
 ```
 apps/
   vscode-extension/   VS Code UI: sidebar, chat, diff review, CodeLens, diagnostics, commands
-  web/                Next.js control dashboard: projects, API catalog, graph, runs, MCP, skills
+  web/                Next.js control dashboard: project overview, API catalog, runs, live events
   agent-server/       Local process: gateway, orchestrator, run loop, Postgres store, event bus
 
 packages/
@@ -572,3 +572,42 @@ Full detail in `CODING-AGENTS.md`.
   hole in containment. A project's own skills live in `.aica/skills`, inside the
   project, where the policy does apply — and a project skill of the same name
   replaces the shipped one, which is what a project skill is for.
+
+### 9.12 The web dashboard (Phase 9)
+
+- **The gateway holds handlers, not a connection.** §3 makes it the only layer
+  that knows about transports, which cuts both ways: the editor speaks JSON-RPC
+  over a pipe, the dashboard speaks HTTP, and both reach the same table with the
+  same validation and the same policy. Welding the gateway to one connection
+  would have meant a second, subtly different table for the second client.
+- **The HTTP listener is opt-in.** Every editor window that opens a folder
+  starts a server. Opening a port on each of them, for a dashboard the user may
+  never run, would be handing out a capability nobody asked for — so it happens
+  only when `AICA_HTTP_PORT` says so.
+- **Loopback, a per-process token, an origin allowlist, and a `Host` check.**
+  Localhost is not a security boundary against the browser the user is already
+  running: any page can issue requests to it, and an attacker's domain can
+  resolve to `127.0.0.1` to become same-origin. All four controls are needed;
+  none of them is sufficient alone.
+- **The browser never holds the token.** The page calls this app's own route
+  handlers and those forward with the credential attached. That keeps the token
+  out of JavaScript, out of history, and out of an `EventSource` URL — which is
+  where the obvious design puts it, because `EventSource` cannot set headers.
+  Same-origin also means the agent's CORS allowlist is defence in depth rather
+  than the thing holding the door.
+- **The dashboard's method list is an allowlist.** Its route handler is
+  reachable by anything in the user's browser, and a pass-through would make the
+  app a confused deputy for the agent's whole method table, writes included.
+- **The Content-Security-Policy carries a per-request nonce and is set in
+  middleware.** A static `script-src 'self'` blocks Next's hydration bootstrap,
+  and the failure is quiet: the page still renders, because the HTML is
+  server-rendered, and is simply dead. `'unsafe-inline'` would be the same as
+  having no script policy at all.
+- **The event stream writes a comment as soon as it opens.** Headers alone do
+  not always settle a stream through an intermediary, and a client that has
+  received no bytes cannot tell an idle stream from one still connecting — which
+  is the difference between "nothing is happening" and "this is broken".
+- **The E2E suite runs against a production build.** A dashboard whose only
+  tested configuration is `next dev` is a dashboard nobody has tested: server
+  components, caching, and headers all behave differently once built, and that
+  is where a dashboard breaks.
